@@ -1,0 +1,611 @@
+{
+ "charts": [
+  {
+   "chart_name": "Profit and Loss",
+   "label": "Profit and Loss"
+  },
+  {
+   "chart_name": "Bank Balance",
+   "label": "Bank Balance"
+  },
+  {
+   "chart_name": "Outgoing Bills (Sales Invoice)",
+   "label": "Outgoing Bills (Sales Invoice)"
+  },
+  {
+   "chart_name": "Hiring vs Attrition Count",
+   "label": "Hiring vs Attrition Count"
+  },
+  {
+   "chart_name": "Department Wise Employee Count",
+   "label": "Department Wise Employee Count"
+  },
+  {
+   "chart_name": "Attendance Count",
+   "label": "Attendance Count"
+  },
+  {
+   "chart_name": "Asset Value Analytics",
+   "label": "Asset Value Analytics"
+  },
+  {
+   "chart_name": "Project Summary",
+   "label": "Project Summary"
+  },
+  {
+   "chart_name": "Outgoing Salary",
+   "label": "Outgoing Salary"
+  }
+ ],
+ "content": "[{\"id\":\"fd-hdr-main\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Founder Dashboard</b></span> &nbsp; <a href=\\\"/founder-dashboard\\\" style=\\\"font-size:.85rem;color:#C9A84C;font-family:Inter,sans-serif;font-weight:600;\\\"><i class=\\\"fa-solid fa-gauge-high\\\"></i> Open Custom Dashboard →</a>\",\"col\":12}},{\"id\":\"fd-hdr-fin\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">Financials</span>\",\"col\":12}},{\"id\":\"fd-nc-1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Annual Sales\",\"col\":3}},{\"id\":\"fd-nc-2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Annual Purchase\",\"col\":3}},{\"id\":\"fd-nc-3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Incoming Payment\",\"col\":3}},{\"id\":\"fd-nc-4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outgoing Payment\",\"col\":3}},{\"id\":\"fd-nc-5\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Incoming Bills\",\"col\":3}},{\"id\":\"fd-nc-6\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outgoing Bills\",\"col\":3}},{\"id\":\"fd-nc-7\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Customers\",\"col\":3}},{\"id\":\"fd-nc-8\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Sales Orders to Bill\",\"col\":3}},{\"id\":\"fd-chart-pnl\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Profit and Loss\",\"col\":6}},{\"id\":\"fd-chart-bank\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Bank Balance\",\"col\":6}},{\"id\":\"fd-sp-1\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-hr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">People & HR</span>\",\"col\":12}},{\"id\":\"fd-nc-9\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Employees\",\"col\":3}},{\"id\":\"fd-nc-10\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Present (This Month)\",\"col\":3}},{\"id\":\"fd-nc-11\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"New Hires (This Year)\",\"col\":3}},{\"id\":\"fd-nc-12\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Job Openings\",\"col\":3}},{\"id\":\"fd-nc-13\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Absent (This Month)\",\"col\":3}},{\"id\":\"fd-nc-14\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Separations (This Month)\",\"col\":3}},{\"id\":\"fd-nc-15\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Expense Claims (This Month)\",\"col\":3}},{\"id\":\"fd-nc-16\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Outgoing Salary(Last month)\",\"col\":3}},{\"id\":\"fd-chart-hire\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Hiring vs Attrition Count\",\"col\":6}},{\"id\":\"fd-chart-dept\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Department Wise Employee Count\",\"col\":6}},{\"id\":\"fd-chart-att\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Attendance Count\",\"col\":6}},{\"id\":\"fd-chart-sal\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Outgoing Salary\",\"col\":6}},{\"id\":\"fd-sp-2\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-asset\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">Assets</span>\",\"col\":12}},{\"id\":\"fd-nc-17\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Assets\",\"col\":3}},{\"id\":\"fd-nc-18\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Asset Value\",\"col\":3}},{\"id\":\"fd-nc-19\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"New Assets (This Year)\",\"col\":3}},{\"id\":\"fd-chart-asset\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Asset Value Analytics\",\"col\":12}},{\"id\":\"fd-sp-3\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-proj\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">Projects & Tasks</span>\",\"col\":12}},{\"id\":\"fd-chart-proj\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Project Summary\",\"col\":12}},{\"id\":\"fd-sp-4\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-crm\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">CRM</span>\",\"col\":12}},{\"id\":\"fd-nc-crm-1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Open Leads\",\"col\":3}},{\"id\":\"fd-nc-crm-2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Open Opportunities\",\"col\":3}},{\"id\":\"fd-nc-crm-3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Quotations (This Month)\",\"col\":3}},{\"id\":\"fd-nc-crm-4\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Active Customers\",\"col\":3}},{\"id\":\"fd-sp-crm\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-links\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">Quick Links</span>\",\"col\":12}},{\"id\":\"fd-sc-1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Sales Invoice\",\"col\":3}},{\"id\":\"fd-sc-2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Purchase Invoice\",\"col\":3}},{\"id\":\"fd-sc-3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Payment Entry\",\"col\":3}},{\"id\":\"fd-sc-4\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Journal Entry\",\"col\":3}},{\"id\":\"fd-sc-5\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Employee\",\"col\":3}},{\"id\":\"fd-sc-6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Leave Application\",\"col\":3}},{\"id\":\"fd-sc-7\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Project\",\"col\":3}},{\"id\":\"fd-sc-8\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Task\",\"col\":3}},{\"id\":\"fd-sc-9\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Asset\",\"col\":3}},{\"id\":\"fd-sc-10\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Trial Balance\",\"col\":3}},{\"id\":\"fd-sc-11\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"General Ledger\",\"col\":3}},{\"id\":\"fd-sc-12\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Profit and Loss Statement\",\"col\":3}},{\"id\":\"fd-sp-5\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"fd-hdr-reports\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h5 text-muted\\\">Reports & Masters</span>\",\"col\":12}},{\"id\":\"fd-card-1\",\"type\":\"card\",\"data\":{\"card_name\":\"Financials\",\"col\":3}},{\"id\":\"fd-card-crm\",\"type\":\"card\",\"data\":{\"card_name\":\"CRM\",\"col\":3}},{\"id\":\"fd-card-2\",\"type\":\"card\",\"data\":{\"card_name\":\"HR\",\"col\":3}},{\"id\":\"fd-card-3\",\"type\":\"card\",\"data\":{\"card_name\":\"Assets & Projects\",\"col\":3}}]",
+ "creation": "2026-06-06 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "dashboard",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Founder Dashboard",
+ "title": "Founder Dashboard",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Financials",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Invoice",
+   "link_count": 0,
+   "link_to": "Sales Invoice",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Purchase Invoice",
+   "link_count": 0,
+   "link_to": "Purchase Invoice",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payment Entry",
+   "link_count": 0,
+   "link_to": "Payment Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Journal Entry",
+   "link_count": 0,
+   "link_to": "Journal Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Profit and Loss Statement",
+   "link_count": 0,
+   "link_to": "Profit and Loss Statement",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Balance Sheet",
+   "link_count": 0,
+   "link_to": "Balance Sheet",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Cash Flow Statement",
+   "link_count": 0,
+   "link_to": "Cash Flow Statement",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Trial Balance",
+   "link_count": 0,
+   "link_to": "Trial Balance",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "General Ledger",
+   "link_count": 0,
+   "link_to": "General Ledger",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Accounts Receivable",
+   "link_count": 0,
+   "link_to": "Accounts Receivable",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Accounts Payable",
+   "link_count": 0,
+   "link_to": "Accounts Payable",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "CRM",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lead",
+   "link_count": 0,
+   "link_to": "Lead",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Quotation",
+   "link_count": 0,
+   "link_to": "Quotation",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Opportunity",
+   "link_count": 0,
+   "link_to": "Opportunity",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Customer",
+   "link_count": 0,
+   "link_to": "Customer",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Lead Details",
+   "link_count": 0,
+   "link_to": "Lead Details",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Quoted Item Comparison",
+   "link_count": 0,
+   "link_to": "Quoted Item Comparison",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "HR",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Employee",
+   "link_count": 0,
+   "link_to": "Employee",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Leave Application",
+   "link_count": 0,
+   "link_to": "Leave Application",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Job Opening",
+   "link_count": 0,
+   "link_to": "Job Opening",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Salary Slip",
+   "link_count": 0,
+   "link_to": "Salary Slip",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Attendance",
+   "link_count": 0,
+   "link_to": "Attendance",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Employee Birthday",
+   "link_count": 0,
+   "link_to": "Employee Birthday",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Monthly Attendance Sheet",
+   "link_count": 0,
+   "link_to": "Monthly Attendance Sheet",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assets & Projects",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Asset",
+   "link_count": 0,
+   "link_to": "Asset",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Asset Category",
+   "link_count": 0,
+   "link_to": "Asset Category",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Fixed Asset Register",
+   "link_count": 0,
+   "link_to": "Fixed Asset Register",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Project",
+   "link_count": 0,
+   "link_to": "Project",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Task",
+   "link_count": 0,
+   "link_to": "Task",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Timesheet",
+   "link_count": 0,
+   "link_to": "Timesheet",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Project Summary",
+   "link_count": 0,
+   "link_to": "Project Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Delayed Tasks Summary",
+   "link_count": 0,
+   "link_to": "Delayed Tasks Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-06-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Next AI",
+ "name": "Founder Dashboard",
+ "number_cards": [
+  {
+   "label": "Annual Sales",
+   "number_card_name": "Annual Sales"
+  },
+  {
+   "label": "Annual Purchase",
+   "number_card_name": "Annual Purchase"
+  },
+  {
+   "label": "Total Incoming Payment",
+   "number_card_name": "Total Incoming Payment"
+  },
+  {
+   "label": "Total Outgoing Payment",
+   "number_card_name": "Total Outgoing Payment"
+  },
+  {
+   "label": "Total Incoming Bills",
+   "number_card_name": "Total Incoming Bills"
+  },
+  {
+   "label": "Total Outgoing Bills",
+   "number_card_name": "Total Outgoing Bills"
+  },
+  {
+   "label": "Active Customers",
+   "number_card_name": "Active Customers"
+  },
+  {
+   "label": "Sales Orders to Bill",
+   "number_card_name": "Sales Orders to Bill"
+  },
+  {
+   "label": "Total Employees",
+   "number_card_name": "Total Employees"
+  },
+  {
+   "label": "Total Present (This Month)",
+   "number_card_name": "Total Present (This Month)"
+  },
+  {
+   "label": "New Hires (This Year)",
+   "number_card_name": "New Hires (This Year)"
+  },
+  {
+   "label": "Job Openings",
+   "number_card_name": "Job Openings"
+  },
+  {
+   "label": "Total Absent (This Month)",
+   "number_card_name": "Total Absent (This Month)"
+  },
+  {
+   "label": "Separations (This Month)",
+   "number_card_name": "Separations (This Month)"
+  },
+  {
+   "label": "Expense Claims (This Month)",
+   "number_card_name": "Expense Claims (This Month)"
+  },
+  {
+   "label": "Total Outgoing Salary(Last month)",
+   "number_card_name": "Total Outgoing Salary(Last month)"
+  },
+  {
+   "label": "Total Assets",
+   "number_card_name": "Total Assets"
+  },
+  {
+   "label": "Asset Value",
+   "number_card_name": "Asset Value"
+  },
+  {
+   "label": "New Assets (This Year)",
+   "number_card_name": "New Assets (This Year)"
+  },
+  {
+   "label": "Open Leads",
+   "number_card_name": "Open Leads"
+  },
+  {
+   "label": "Open Opportunities",
+   "number_card_name": "Open Opportunities"
+  },
+  {
+   "label": "Quotations (This Month)",
+   "number_card_name": "Quotations (This Month)"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "restrict_to_domain": "",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "HR Manager"
+  }
+ ],
+ "sequence_id": 1.0,
+ "shortcuts": [
+  {
+   "label": "Sales Invoice",
+   "link_to": "Sales Invoice",
+   "type": "DocType"
+  },
+  {
+   "label": "Purchase Invoice",
+   "link_to": "Purchase Invoice",
+   "type": "DocType"
+  },
+  {
+   "label": "Payment Entry",
+   "link_to": "Payment Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Journal Entry",
+   "link_to": "Journal Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Lead",
+   "link_to": "Lead",
+   "type": "DocType"
+  },
+  {
+   "label": "Quotation",
+   "link_to": "Quotation",
+   "type": "DocType"
+  },
+  {
+   "label": "Opportunity",
+   "link_to": "Opportunity",
+   "type": "DocType"
+  },
+  {
+   "label": "Employee",
+   "link_to": "Employee",
+   "type": "DocType"
+  },
+  {
+   "label": "Leave Application",
+   "link_to": "Leave Application",
+   "type": "DocType"
+  },
+  {
+   "label": "Project",
+   "link_to": "Project",
+   "type": "DocType"
+  },
+  {
+   "label": "Task",
+   "link_to": "Task",
+   "type": "DocType"
+  },
+  {
+   "label": "Asset",
+   "link_to": "Asset",
+   "type": "DocType"
+  },
+  {
+   "label": "Trial Balance",
+   "link_to": "Trial Balance",
+   "type": "Report"
+  },
+  {
+   "label": "General Ledger",
+   "link_to": "General Ledger",
+   "type": "Report"
+  },
+  {
+   "label": "Profit and Loss Statement",
+   "link_to": "Profit and Loss Statement",
+   "type": "Report"
+  }
+ ]
+}

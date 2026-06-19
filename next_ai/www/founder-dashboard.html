@@ -1,0 +1,1842 @@
+{% extends "templates/web.html" %}
+{% block title %}Founder Dashboard — Apex Ledger & Audit{% endblock %}
+
+{% block head_include %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0B1F4B;--gold:#C9A84C;--gold2:#e8c56a;
+  --light:#EEF1F8;--dark:#08152e;--text:#1a2340;
+  --muted:#6b7a99;--white:#fff;--green:#1d7a4f;
+  --red:#c0392b;--purple:#7b2d8b;--orange:#b8460b;
+}
+*{box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;color:var(--text);margin:0;background:var(--light);}
+h1,h2,h3,h4,h5{font-family:'Playfair Display',serif;}
+a{text-decoration:none;}
+
+/* ── TOP BAR ── */
+.dash-topbar{
+  background:linear-gradient(135deg,var(--dark) 0%,var(--navy) 100%);
+  padding:0;position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 20px rgba(0,0,0,.25);
+}
+.dash-topbar .inner{display:flex;align-items:center;gap:0;height:58px;}
+.brand{
+  display:flex;align-items:center;gap:10px;color:var(--white);
+  text-decoration:none;padding:0 24px;
+  border-right:1px solid rgba(255,255,255,.08);height:100%;flex-shrink:0;
+}
+.brand i{font-size:1.3rem;color:var(--gold);}
+.brand span{font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:700;}
+.brand small{font-family:'Inter',sans-serif;font-size:.6rem;color:rgba(255,255,255,.35);letter-spacing:.6px;display:block;}
+.dash-nav{display:flex;align-items:center;height:100%;padding:0 8px;}
+.dash-nav a{
+  color:rgba(255,255,255,.55);font-size:.8rem;
+  padding:0 13px;height:100%;display:inline-flex;align-items:center;gap:5px;
+  border-bottom:2px solid transparent;transition:.2s;
+}
+.dash-nav a:hover,.dash-nav a.active{color:var(--gold);border-bottom-color:var(--gold);}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;padding:0 18px;color:rgba(255,255,255,.65);font-size:.8rem;}
+.topbar-right a{color:var(--gold);text-decoration:none;font-weight:600;font-size:.78rem;}
+.btn-erpnext{
+  background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.28);
+  color:var(--gold);padding:5px 12px;border-radius:6px;
+  font-size:.76rem;text-decoration:none;font-weight:600;transition:.2s;
+}
+.btn-erpnext:hover{background:rgba(201,168,76,.22);}
+
+/* ── PERIOD BAR ── */
+.period-bar{
+  background:var(--white);padding:11px 28px;
+  border-bottom:1px solid #e2e8f0;
+  display:flex;align-items:center;flex-wrap:wrap;gap:14px;
+}
+.period-bar label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+.period-pills{display:flex;gap:5px;flex-wrap:wrap;}
+.ppill{
+  padding:5px 15px;border-radius:50px;
+  border:1.5px solid #dde5ef;font-size:.78rem;font-weight:500;
+  color:var(--muted);text-decoration:none;transition:.2s;white-space:nowrap;
+}
+.ppill:hover,.ppill.active{background:var(--navy);color:var(--white);border-color:var(--navy);}
+.co-sel{border:1.5px solid #dde5ef;border-radius:8px;padding:5px 12px;font-size:.8rem;color:var(--text);outline:none;background:var(--white);}
+.co-sel:focus{border-color:var(--gold);}
+.period-info{
+  margin-left:auto;font-size:.76rem;color:var(--muted);
+  background:var(--light);padding:5px 14px;border-radius:50px;
+  display:flex;align-items:center;gap:6px;
+}
+
+/* ── WELCOME HERO ── */
+.dash-hero{
+  background:linear-gradient(135deg,var(--dark) 0%,var(--navy) 55%,#1a3a8f 100%);
+  padding:24px 28px;position:relative;overflow:hidden;
+  border-bottom:3px solid var(--gold);
+}
+.dash-hero::before{
+  content:'';position:absolute;top:-50px;right:-50px;
+  width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(201,168,76,.12) 0%,transparent 70%);
+}
+.dash-hero::after{
+  content:'';position:absolute;bottom:-60px;right:120px;
+  width:160px;height:160px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.04) 0%,transparent 70%);
+}
+.hero-inner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative;z-index:1;}
+.hero-greeting h2{font-size:1.4rem;color:var(--white);margin-bottom:4px;}
+.hero-greeting p{font-size:.85rem;color:rgba(255,255,255,.5);margin:0;}
+.hero-chips{display:flex;gap:10px;flex-wrap:wrap;}
+.hero-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+  color:rgba(255,255,255,.7);padding:6px 14px;border-radius:50px;
+  font-size:.78rem;font-weight:500;
+}
+.hero-chip .hc-val{color:var(--gold);font-weight:700;}
+.hero-stat{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:14px 20px;text-align:center;min-width:110px;
+}
+.hero-stat .hs-v{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:var(--white);}
+.hero-stat .hs-l{font-size:.68rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+.hero-stats-row{display:flex;gap:12px;flex-wrap:wrap;}
+
+/* ── LAYOUT ── */
+.dash-body{padding:22px 28px;}
+.section-hdr{display:flex;align-items:center;gap:10px;margin:28px 0 16px;}
+.section-hdr h3{margin:0;font-size:1rem;color:var(--text);font-weight:600;}
+.section-hdr .line{flex:1;height:1px;background:linear-gradient(90deg,#dde3ef,transparent);}
+.section-hdr .sec-icon{
+  width:34px;height:34px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.9rem;flex-shrink:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+
+/* ── GRID HELPERS ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+.g-auto{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;}
+
+/* ── KPI CARD ── */
+.kpi{
+  background:var(--white);border-radius:16px;padding:20px 22px;
+  box-shadow:0 2px 12px rgba(11,31,75,.07);
+  border-left:4px solid transparent;transition:.25s;
+  position:relative;overflow:hidden;
+}
+.kpi::after{
+  content:'';position:absolute;top:0;right:0;
+  width:80px;height:80px;border-radius:50%;
+  background:currentColor;opacity:.03;transform:translate(20px,-20px);
+  pointer-events:none;
+}
+.kpi:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(11,31,75,.12);}
+.kpi.green{border-left-color:#1d7a4f;}
+.kpi.green .kpi-glow{box-shadow:inset 0 0 0 1px rgba(29,122,79,.07),0 0 0 0 rgba(29,122,79,.07);}
+.kpi.red{border-left-color:#c0392b;}
+.kpi.navy{border-left-color:var(--navy);}
+.kpi.gold{border-left-color:var(--gold);}
+.kpi.purple{border-left-color:#7b2d8b;}
+.kpi.orange{border-left-color:#b8460b;}
+.kpi .ico{
+  width:40px;height:40px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;margin-bottom:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+}
+.kpi .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:5px;font-weight:700;}
+.kpi .val{font-family:'Playfair Display',serif;font-size:1.65rem;font-weight:800;color:var(--navy);line-height:1.1;}
+.kpi .val.sm{font-size:1.2rem;}
+.kpi .cur{font-size:.8rem;font-weight:600;color:var(--muted);margin-right:2px;}
+.kpi .sub{font-size:.71rem;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:4px;}
+.kpi .sub b{font-weight:700;color:var(--text);}
+.badge-sm{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:50px;font-size:.66rem;font-weight:700;}
+.bg-green{background:#ecfdf5;color:#065f46;}
+.bg-red{background:#fef2f2;color:#991b1b;}
+.bg-gold{background:#fef9c3;color:#713f12;}
+.bg-blue{background:#eff6ff;color:#1e40af;}
+.bg-purple{background:#faf5ff;color:#6b21a8;}
+
+/* ── CHART CARD ── */
+.ccard{background:var(--white);border-radius:16px;padding:22px 24px;box-shadow:0 2px 12px rgba(11,31,75,.06);}
+.ccard-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.ccard-hdr h5{margin:0;font-size:.95rem;font-family:'Playfair Display',serif;display:flex;align-items:center;gap:8px;}
+.ccard-hdr .ptag{font-size:.68rem;background:var(--light);color:var(--muted);padding:3px 10px;border-radius:50px;border:1px solid #e0e7f0;}
+
+/* ── TABLE ── */
+.dtbl{width:100%;border-collapse:collapse;}
+.dtbl thead th{
+  font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+  padding:9px 12px;border-bottom:2px solid var(--light);
+  text-align:left;font-weight:700;white-space:nowrap;background:#fafbfe;
+}
+.dtbl tbody td{padding:11px 12px;border-bottom:1px solid var(--light);font-size:.84rem;vertical-align:middle;}
+.dtbl tbody tr:last-child td{border-bottom:none;}
+.dtbl tbody tr:hover td{background:#f6f8ff;}
+.dtbl td.num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;}
+.st-badge{padding:3px 10px;border-radius:50px;font-size:.67rem;font-weight:700;white-space:nowrap;}
+.st-open{background:#eff6ff;color:#1e40af;}
+.st-paid{background:#ecfdf5;color:#065f46;}
+.st-lost{background:#fef2f2;color:#991b1b;}
+.st-conv{background:#f0fdf4;color:#166534;}
+.st-wip{background:#fef9c3;color:#713f12;}
+.st-draft{background:#f1f5f9;color:#475569;}
+.st-cancel{background:#f1f5f9;color:#6b7280;}
+
+/* ── PROGRESS BAR ── */
+.pbar-wrap{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.pbar-lbl{font-size:.78rem;color:var(--text);width:100px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pbar-track{flex:1;height:6px;background:#e8edf5;border-radius:4px;overflow:hidden;}
+.pbar-fill{height:100%;border-radius:4px;transition:width .8s cubic-bezier(.4,0,.2,1);}
+.pbar-cnt{font-size:.78rem;font-weight:700;color:var(--navy);width:30px;text-align:right;flex-shrink:0;}
+
+/* ── PROJECT PROGRESS ── */
+.proj-item{padding:14px 0;border-bottom:1px solid var(--light);}
+.proj-item:last-child{border-bottom:none;}
+.proj-name{font-size:.88rem;font-weight:600;color:var(--text);margin-bottom:4px;}
+.proj-meta{font-size:.74rem;color:var(--muted);margin-bottom:8px;display:flex;gap:12px;}
+.proj-pbar{height:5px;background:#e8edf5;border-radius:3px;overflow:hidden;}
+.proj-pbar-fill{height:100%;background:linear-gradient(90deg,var(--navy),var(--gold));border-radius:3px;}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:36px 16px;color:var(--muted);}
+.empty i{font-size:2.2rem;opacity:.2;margin-bottom:10px;display:block;}
+.empty p{font-size:.85rem;margin:0;}
+
+/* ── LOGIN PROMPT ── */
+.login-wrap{min-height:80vh;display:flex;align-items:center;justify-content:center;padding:40px;}
+.login-box{
+  background:var(--white);border-radius:24px;padding:64px 48px;
+  text-align:center;max-width:480px;
+  box-shadow:0 8px 48px rgba(11,31,75,.1);
+}
+.login-box i{font-size:3.5rem;color:var(--gold);margin-bottom:20px;display:block;}
+.btn-gold-lg{
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  color:var(--dark);font-weight:700;padding:12px 32px;
+  border-radius:9px;font-size:.95rem;text-decoration:none;
+  display:inline-block;transition:.3s;
+}
+.btn-gold-lg:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(201,168,76,.4);color:var(--dark);}
+
+/* ── QUICK LINKS ── */
+.qlink-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:10px;}
+.qlink{
+  background:var(--white);border-radius:13px;padding:16px 14px;
+  text-align:center;text-decoration:none;color:var(--text);
+  border:1.5px solid #e8edf5;transition:.25s;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+}
+.qlink:hover{border-color:var(--gold);transform:translateY(-3px);box-shadow:0 8px 24px rgba(11,31,75,.09);}
+.qlink i{font-size:1.2rem;}
+.qlink span{font-size:.73rem;font-weight:600;}
+
+/* ── PROFIT HEALTH CARD ── */
+.health-card{
+  background:linear-gradient(135deg,var(--navy),#1a3a8f);
+  border-radius:16px;padding:22px 24px;color:var(--white);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  box-shadow:0 4px 20px rgba(11,31,75,.2);flex-wrap:wrap;
+}
+.hc-left h4{font-size:1rem;color:rgba(255,255,255,.6);font-family:'Inter',sans-serif;font-weight:500;margin-bottom:4px;}
+.hc-left .hc-val{font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:800;color:var(--white);}
+.hc-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);
+  color:rgba(255,255,255,.8);padding:5px 14px;border-radius:50px;
+  font-size:.76rem;font-weight:600;margin-top:8px;
+}
+.hc-badge.profit{background:rgba(29,122,79,.2);border-color:rgba(29,122,79,.3);color:#6ee7b7;}
+.hc-badge.loss{background:rgba(192,57,43,.2);border-color:rgba(192,57,43,.3);color:#fca5a5;}
+
+/* ── COMMAND CENTRE ── */
+.cmd-centre{background:linear-gradient(135deg,var(--dark) 0%,var(--navy) 100%);padding:20px 28px;border-bottom:3px solid var(--gold);}
+.cmd-centre h4{color:rgba(255,255,255,.45);font-size:.65rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 14px;font-family:'Inter',sans-serif;font-weight:700;}
+.cmd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;}
+.cmd-btn{
+  background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1);
+  border-radius:13px;padding:14px 10px 12px;text-align:center;cursor:pointer;
+  transition:.22s;display:flex;flex-direction:column;align-items:center;gap:7px;
+  color:rgba(255,255,255,.75);font-size:.73rem;font-weight:600;
+}
+.cmd-btn:hover{background:rgba(201,168,76,.15);border-color:rgba(201,168,76,.4);color:var(--gold);transform:translateY(-2px);}
+.cmd-btn .cb-ico{
+  width:38px;height:38px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:1rem;
+}
+.cmd-btn .cb-tag{font-size:.58rem;text-transform:uppercase;letter-spacing:.5px;opacity:.5;margin-top:1px;}
+
+/* ── MODAL OVERLAY ── */
+.fdr-overlay{
+  position:fixed;inset:0;background:rgba(8,21,46,.6);z-index:9000;
+  display:none;align-items:flex-start;justify-content:flex-end;
+  backdrop-filter:blur(3px);
+}
+.fdr-overlay.open{display:flex;}
+.fdr-panel{
+  background:var(--white);width:520px;max-width:95vw;height:100vh;
+  overflow-y:auto;display:flex;flex-direction:column;
+  box-shadow:-8px 0 48px rgba(8,21,46,.25);
+  animation:slideIn .28s cubic-bezier(.4,0,.2,1);
+}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.fdr-panel-hdr{
+  background:linear-gradient(135deg,var(--dark),var(--navy));
+  padding:20px 24px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:2;flex-shrink:0;
+  border-bottom:2px solid var(--gold);
+}
+.fdr-panel-hdr h3{margin:0;color:var(--white);font-size:1.05rem;}
+.fdr-panel-hdr p{margin:0;font-size:.72rem;color:rgba(255,255,255,.45);font-family:'Inter',sans-serif;}
+.fdr-close{
+  background:rgba(255,255,255,.1);border:none;color:var(--white);
+  width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;transition:.2s;flex-shrink:0;
+}
+.fdr-close:hover{background:rgba(201,168,76,.25);color:var(--gold);}
+.fdr-panel-body{padding:24px;flex:1;}
+.fdr-panel-footer{
+  padding:16px 24px;border-top:1px solid var(--light);
+  display:flex;gap:10px;position:sticky;bottom:0;background:var(--white);z-index:2;
+}
+
+/* ── FORM CONTROLS ── */
+.fdr-group{margin-bottom:16px;}
+.fdr-group label{display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;}
+.fdr-group input,.fdr-group select,.fdr-group textarea{
+  width:100%;border:1.5px solid #dde5ef;border-radius:9px;
+  padding:9px 13px;font-size:.88rem;color:var(--text);outline:none;
+  font-family:'Inter',sans-serif;background:var(--white);transition:.2s;
+}
+.fdr-group input:focus,.fdr-group select:focus,.fdr-group textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,.12);}
+.fdr-group textarea{resize:vertical;min-height:72px;}
+.fdr-row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.fdr-section-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--navy);padding:12px 0 8px;border-top:1px solid var(--light);margin-top:6px;margin-bottom:6px;}
+.fdr-item-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px;}
+.fdr-item-row input{margin:0;}
+.btn-add-row{background:none;border:1.5px dashed #dde5ef;border-radius:8px;padding:8px;color:var(--muted);cursor:pointer;font-size:.8rem;width:100%;transition:.2s;margin-top:4px;}
+.btn-add-row:hover{border-color:var(--gold);color:var(--gold);}
+.btn-del-row{background:#fef2f2;border:none;border-radius:7px;width:28px;height:28px;cursor:pointer;color:#c0392b;font-size:.78rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.btn-submit{
+  background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);
+  border:none;padding:10px 24px;border-radius:9px;font-size:.88rem;font-weight:700;
+  cursor:pointer;flex:1;transition:.25s;
+}
+.btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(201,168,76,.4);}
+.btn-submit:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-cancel-modal{background:var(--light);border:none;padding:10px 18px;border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--muted);transition:.2s;}
+.btn-cancel-modal:hover{background:#dde5ef;}
+.fdr-success{
+  background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:10px;
+  padding:14px 16px;margin-top:12px;display:none;align-items:center;gap:10px;
+  color:#065f46;font-size:.88rem;font-weight:600;
+}
+.fdr-error{
+  background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;
+  padding:12px 16px;margin-top:10px;display:none;
+  color:#991b1b;font-size:.82rem;
+}
+
+@media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr);}.g3{grid-template-columns:1fr 1fr;}}
+@media(max-width:768px){
+  .g4,.g3,.g2{grid-template-columns:1fr;}
+  .dash-body{padding:16px;}
+  .period-bar{padding:10px 16px;}
+  .dash-hero{padding:18px 16px;}
+  .hero-stats-row{display:none;}
+}
+</style>
+{% endblock %}
+
+{% block page_content %}
+<!-- ══ TOP BAR ══════════════════════════════════════════════ -->
+<div class="dash-topbar">
+  <div class="inner container-fluid">
+    <a href="/firm" class="brand">
+      <i class="fa-solid fa-scale-balanced"></i>
+      <div><span>Apex Ledger</span><small>FOUNDER DASHBOARD</small></div>
+    </a>
+    <nav class="dash-nav">
+      <a href="/founder-dashboard" class="active"><i class="fa-solid fa-gauge-high me-1"></i>Dashboard</a>
+      <a href="/firm-portal"><i class="fa-solid fa-user-shield me-1"></i>Client Portal</a>
+      <a href="/firm-financials"><i class="fa-solid fa-chart-line me-1"></i>Reports</a>
+      <a href="/firm-contact"><i class="fa-solid fa-headset me-1"></i>Contact</a>
+    </nav>
+    <div class="topbar-right">
+      {% if frappe.session.user != "Guest" %}
+        <i class="fa-solid fa-user-circle" style="color:var(--gold);font-size:1.1rem;"></i>
+        <span>{{ frappe.session.user }}</span>
+        <a href="/app/founder-dashboard" class="btn-erpnext" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>ERPNext</a>
+        <a href="/api/method/frappe.client.logout">Logout</a>
+      {% else %}
+        <a href="/login?redirect-to=/founder-dashboard">Login</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if is_guest %}
+<div class="login-wrap">
+  <div class="login-box">
+    <i class="fa-solid fa-gauge-high"></i>
+    <h3>Founder Dashboard</h3>
+    <p style="color:var(--muted);margin-bottom:28px;">This dashboard is restricted to authorized users. Please login to view real-time business metrics.</p>
+    <a href="/login?redirect-to=/founder-dashboard" class="btn-gold-lg"><i class="fa-solid fa-right-to-bracket me-2"></i>Login to Continue</a>
+  </div>
+</div>
+{% else %}
+
+<!-- ══ PERIOD FILTER BAR ════════════════════════════════════ -->
+<div class="period-bar">
+  <label>Period</label>
+  <div class="period-pills">
+    {% for key, lbl in [("this_month","This Month"),("last_month","Last Month"),("this_quarter","This Quarter"),("last_quarter","Last Quarter"),("this_year","This Year"),("last_year","Last Year")] %}
+    <a href="?period={{ key }}{% if selected_company %}&company={{ selected_company }}{% endif %}" class="ppill {% if period==key %}active{% endif %}">{{ lbl }}</a>
+    {% endfor %}
+  </div>
+  {% if companies|length > 1 %}
+  <select class="co-sel" onchange="location.href='?period={{ period }}&company='+this.value">
+    {% for co in companies %}
+    <option value="{{ co.name }}" {% if co.name==selected_company %}selected{% endif %}>{{ co.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <div class="period-info"><i class="fa-regular fa-calendar"></i>{{ from_date }} → {{ to_date }}</div>
+</div>
+
+<!-- ══ COMMAND CENTRE ════════════════════════════════════════ -->
+<div class="cmd-centre">
+  <h4><i class="fa-solid fa-bolt" style="color:var(--gold);margin-right:6px;"></i>Quick Create — Command Centre</h4>
+  <div class="cmd-grid">
+    <button class="cmd-btn" onclick="openModal('modal-employee')">
+      <div class="cb-ico" style="background:rgba(123,45,139,.2);"><i class="fa-solid fa-user-tie" style="color:#c084fc;"></i></div>
+      New Employee<div class="cb-tag">HR</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-sales-invoice')">
+      <div class="cb-ico" style="background:rgba(29,122,79,.2);"><i class="fa-solid fa-file-invoice" style="color:#6ee7b7;"></i></div>
+      Sales Invoice<div class="cb-tag">Billing</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-customer')">
+      <div class="cb-ico" style="background:rgba(8,145,178,.2);"><i class="fa-solid fa-handshake" style="color:#67e8f9;"></i></div>
+      New Customer<div class="cb-tag">CRM</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-delivery-note')">
+      <div class="cb-ico" style="background:rgba(201,168,76,.2);"><i class="fa-solid fa-truck" style="color:var(--gold2);"></i></div>
+      Delivery Note<div class="cb-tag">Stock</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-purchase-order')">
+      <div class="cb-ico" style="background:rgba(184,70,11,.2);"><i class="fa-solid fa-cart-shopping" style="color:#fb923c;"></i></div>
+      Purchase Order<div class="cb-tag">Buying</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-asset')">
+      <div class="cb-ico" style="background:rgba(11,31,75,.35);"><i class="fa-solid fa-boxes-stacked" style="color:#93c5fd;"></i></div>
+      New Asset<div class="cb-tag">Assets</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-journal')">
+      <div class="cb-ico" style="background:rgba(192,57,43,.2);"><i class="fa-solid fa-book" style="color:#fca5a5;"></i></div>
+      Journal Entry<div class="cb-tag">Accounts</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-project')">
+      <div class="cb-ico" style="background:rgba(29,122,79,.2);"><i class="fa-solid fa-diagram-project" style="color:#6ee7b7;"></i></div>
+      New Project<div class="cb-tag">Projects</div>
+    </button>
+    <button class="cmd-btn" onclick="openModal('modal-task')">
+      <div class="cb-ico" style="background:rgba(201,168,76,.2);"><i class="fa-solid fa-list-check" style="color:var(--gold2);"></i></div>
+      New Task<div class="cb-tag">Tasks</div>
+    </button>
+  </div>
+</div>
+
+<!-- ══ WELCOME HERO ══════════════════════════════════════════ -->
+<div class="dash-hero">
+  <div class="hero-inner">
+    <div class="hero-greeting">
+      <h2>Business Command Centre</h2>
+      <p>Real-time metrics for <strong style="color:rgba(255,255,255,.75);">{{ selected_company }}</strong> &nbsp;·&nbsp; {{ period_label }}</p>
+      <div style="margin-top:12px;">
+        <div class="health-card" style="border-radius:12px;padding:14px 20px;display:inline-flex;gap:20px;flex-wrap:wrap;">
+          <div class="hc-left">
+            <div style="font-size:.7rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Net Profit / Loss</div>
+            <div class="hc-val" style="font-size:1.3rem;"><span style="font-size:.75rem;font-weight:500;color:rgba(255,255,255,.4);">{{ currency }} </span>{{ net_profit }}</div>
+          </div>
+          <div>
+            <span class="hc-badge {% if net_profit_positive %}profit{% else %}loss{% endif %}">
+              <i class="fa-solid fa-{% if net_profit_positive %}arrow-trend-up{% else %}arrow-trend-down{% endif %}"></i>
+              {% if net_profit_positive %}Profitable{% else %}Loss-making{% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-stats-row">
+      <div class="hero-stat">
+        <div class="hs-v" style="color:var(--gold);">{{ currency }} {{ sales_total }}</div>
+        <div class="hs-l">Revenue</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hs-v" style="color:#f87171;">{{ currency }} {{ purchase_total }}</div>
+        <div class="hs-l">Expenses</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hs-v">{{ total_employees }}</div>
+        <div class="hs-l">Employees</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hs-v" style="color:#86efac;">{{ active_customers }}</div>
+        <div class="hs-l">Customers</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD BODY ═══════════════════════════════════════ -->
+<div class="dash-body container-fluid">
+
+  <!-- ────────────────────────── FINANCIALS ─────────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);"><i class="fa-solid fa-coins" style="color:var(--navy);"></i></div>
+    <h3>Financials — <span style="color:var(--gold);">{{ period_label }}</span></h3>
+    <div class="line"></div>
+    <a href="/firm-financials?period={{ period }}{% if selected_company %}&company={{ selected_company }}{% endif %}" style="display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--gold);text-decoration:none;white-space:nowrap;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);padding:4px 12px;border-radius:6px;font-weight:600;"><i class="fa-solid fa-arrow-up-right-from-square"></i>Full Report</a>
+  </div>
+
+  <div class="g4" style="margin-bottom:16px;">
+    <div class="kpi green">
+      <div class="ico" style="background:#ecfdf5;"><i class="fa-solid fa-arrow-trend-up" style="color:#1d7a4f;"></i></div>
+      <div class="lbl">Sales Revenue</div>
+      <div class="val"><span class="cur">{{ currency }}</span>{{ sales_total }}</div>
+      <div class="sub"><span class="badge-sm bg-green"><i class="fa-solid fa-file-invoice"></i> {{ sales_count }} invoices</span></div>
+    </div>
+    <div class="kpi red">
+      <div class="ico" style="background:#fef2f2;"><i class="fa-solid fa-arrow-trend-down" style="color:#c0392b;"></i></div>
+      <div class="lbl">Purchase Expenses</div>
+      <div class="val"><span class="cur">{{ currency }}</span>{{ purchase_total }}</div>
+      <div class="sub"><span class="badge-sm bg-red"><i class="fa-solid fa-receipt"></i> {{ purchase_count }} bills</span></div>
+    </div>
+    <div class="kpi {% if net_profit_positive %}navy{% else %}red{% endif %}">
+      <div class="ico" style="background:{% if net_profit_positive %}#eff6ff{% else %}#fef2f2{% endif %};"><i class="fa-solid fa-scale-balanced" style="color:{% if net_profit_positive %}var(--navy){% else %}#c0392b{% endif %};"></i></div>
+      <div class="lbl">Net Profit / Loss</div>
+      <div class="val" style="color:{% if net_profit_positive %}var(--navy){% else %}#c0392b{% endif %};"><span class="cur">{{ currency }}</span>{{ net_profit }}</div>
+      <div class="sub"><span class="badge-sm {% if net_profit_positive %}bg-green{% else %}bg-red{% endif %}"><i class="fa-solid fa-{% if net_profit_positive %}caret-up{% else %}caret-down{% endif %}"></i> {% if net_profit_positive %}Profitable{% else %}Loss{% endif %}</span></div>
+    </div>
+    <div class="kpi gold">
+      <div class="ico" style="background:#fef9c3;"><i class="fa-solid fa-hourglass-half" style="color:#713f12;"></i></div>
+      <div class="lbl">Outstanding Receivable</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ outstanding_ar }}</div>
+      <div class="sub"><span class="badge-sm bg-gold"><i class="fa-solid fa-clock"></i> Awaiting collection</span></div>
+    </div>
+  </div>
+
+  <div class="g4" style="margin-bottom:24px;">
+    <div class="kpi green">
+      <div class="ico" style="background:#ecfdf5;"><i class="fa-solid fa-arrow-down-to-bracket" style="color:#1d7a4f;"></i></div>
+      <div class="lbl">Incoming Payments</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ incoming_payment }}</div>
+    </div>
+    <div class="kpi red">
+      <div class="ico" style="background:#fef2f2;"><i class="fa-solid fa-arrow-up-from-bracket" style="color:#c0392b;"></i></div>
+      <div class="lbl">Outgoing Payments</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ outgoing_payment }}</div>
+    </div>
+    <div class="kpi orange">
+      <div class="ico" style="background:#fff7ed;"><i class="fa-solid fa-file-circle-exclamation" style="color:#b8460b;"></i></div>
+      <div class="lbl">Outstanding Payable</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ outstanding_ap }}</div>
+    </div>
+    <div class="kpi navy">
+      <div class="ico" style="background:#eff6ff;"><i class="fa-solid fa-users" style="color:var(--navy);"></i></div>
+      <div class="lbl">Active Customers</div>
+      <div class="val">{{ active_customers }}</div>
+      <div class="sub">Sales Orders to Bill: <b>{{ so_to_bill }}</b></div>
+    </div>
+  </div>
+
+  <!-- Revenue vs Purchase Trend Chart -->
+  <div class="ccard" style="margin-bottom:24px;">
+    <div class="ccard-hdr">
+      <h5><i class="fa-solid fa-chart-column" style="color:var(--gold);"></i> Revenue vs Expenses Trend</h5>
+      <span class="ptag">{{ trend_labels|length }}-Month View</span>
+    </div>
+    <canvas id="trendChart" height="120"></canvas>
+  </div>
+
+  <!-- ──────────────────────── HR & PEOPLE ─────────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#faf5ff,#ede9fe);"><i class="fa-solid fa-people-group" style="color:#7b2d8b;"></i></div>
+    <h3>People & HR</h3>
+    <div class="line"></div>
+    <a href="/app/employee" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--purple);text-decoration:none;white-space:nowrap;background:rgba(123,45,139,.07);border:1px solid rgba(123,45,139,.15);padding:4px 12px;border-radius:6px;font-weight:600;"><i class="fa-solid fa-arrow-up-right-from-square"></i>Employees</a>
+  </div>
+
+  <div class="g4" style="margin-bottom:16px;">
+    <div class="kpi purple">
+      <div class="ico" style="background:#faf5ff;"><i class="fa-solid fa-id-badge" style="color:#7b2d8b;"></i></div>
+      <div class="lbl">Active Employees</div>
+      <div class="val">{{ total_employees }}</div>
+      <div class="sub">New hires: <b>{{ new_hires }}</b></div>
+    </div>
+    <div class="kpi green">
+      <div class="ico" style="background:#ecfdf5;"><i class="fa-solid fa-calendar-check" style="color:#1d7a4f;"></i></div>
+      <div class="lbl">Present (Period)</div>
+      <div class="val">{{ att_present }}</div>
+      <div class="sub">Out of {{ att_total }} total records</div>
+    </div>
+    <div class="kpi red">
+      <div class="ico" style="background:#fef2f2;"><i class="fa-solid fa-calendar-xmark" style="color:#c0392b;"></i></div>
+      <div class="lbl">Absent (Period)</div>
+      <div class="val">{{ att_absent }}</div>
+      <div class="sub">Half Day: <b>{{ att_half_day }}</b></div>
+    </div>
+    <div class="kpi gold">
+      <div class="ico" style="background:#fef9c3;"><i class="fa-solid fa-briefcase-medical" style="color:#713f12;"></i></div>
+      <div class="lbl">On Leave (Period)</div>
+      <div class="val">{{ att_on_leave }}</div>
+      <div class="sub">WFH: <b>{{ att_wfh }}</b></div>
+    </div>
+  </div>
+
+  <div class="g4" style="margin-bottom:24px;">
+    <div class="kpi navy">
+      <div class="ico" style="background:#eff6ff;"><i class="fa-solid fa-money-bill-wave" style="color:var(--navy);"></i></div>
+      <div class="lbl">Salary Paid (Period)</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ salary_total }}</div>
+      <div class="sub">{{ salary_count }} salary slips</div>
+    </div>
+    <div class="kpi orange">
+      <div class="ico" style="background:#fff7ed;"><i class="fa-solid fa-file-invoice-dollar" style="color:#b8460b;"></i></div>
+      <div class="lbl">Expense Claims (Period)</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ expense_claims_amt }}</div>
+      <div class="sub">{{ expense_claims_count }} claims</div>
+    </div>
+    <div class="kpi green">
+      <div class="ico" style="background:#ecfdf5;"><i class="fa-solid fa-user-plus" style="color:#1d7a4f;"></i></div>
+      <div class="lbl">Job Openings</div>
+      <div class="val">{{ job_openings }}</div>
+      <div class="sub">Separations: <b>{{ separations }}</b></div>
+    </div>
+    <div class="kpi purple">
+      <div class="ico" style="background:#faf5ff;"><i class="fa-solid fa-umbrella-beach" style="color:#7b2d8b;"></i></div>
+      <div class="lbl">Leave Applications</div>
+      <div class="val">{{ leave_count }}</div>
+      <div class="sub">For this period</div>
+    </div>
+  </div>
+
+  <!-- Attendance Charts Row -->
+  <div class="g2" style="margin-bottom:24px;">
+    <!-- Attendance Donut Chart -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-chart-pie" style="color:#7b2d8b;"></i> Attendance Breakdown</h5>
+        <span class="ptag">{{ period_label }}</span>
+      </div>
+      {% if att_total > 0 %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center;">
+        <canvas id="attDonutChart" height="200"></canvas>
+        <div>
+          {% set att_colors = ["#1d7a4f","#c0392b","#C9A84C","#7b2d8b","#0B1F4B","#6b7a99"] %}
+          {% for lbl, val, col in [
+            ("Present", att_present, "#1d7a4f"),
+            ("Absent", att_absent, "#c0392b"),
+            ("Half Day", att_half_day, "#C9A84C"),
+            ("On Leave", att_on_leave, "#7b2d8b"),
+            ("Work From Home", att_wfh, "#0B1F4B"),
+            ("Holiday", att_holiday, "#6b7a99")
+          ] %}
+          <div class="pbar-wrap">
+            <span class="pbar-lbl" style="color:{{ col }};">
+              <i class="fa-solid fa-circle" style="font-size:.5rem;margin-right:4px;"></i>{{ lbl }}
+            </span>
+            <div class="pbar-track">
+              <div class="pbar-fill" style="width:{% if att_total > 0 %}{{ (val / att_total * 100)|round|int }}{% else %}0{% endif %}%;background:{{ col }};"></div>
+            </div>
+            <span class="pbar-cnt">{{ val }}</span>
+          </div>
+          {% endfor %}
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--light);font-size:.75rem;color:var(--muted);text-align:center;">
+            Total Records: <b style="color:var(--navy);">{{ att_total }}</b>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty"><i class="fa-solid fa-calendar"></i><p>No attendance records for this period.</p></div>
+      {% endif %}
+    </div>
+
+    <!-- Attendance Status Count Bar Chart -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-chart-bar" style="color:#7b2d8b;"></i> Attendance Status Count</h5>
+        <span class="ptag">{{ period_label }}</span>
+      </div>
+      {% if att_total > 0 %}
+      <canvas id="attBarChart" height="200"></canvas>
+      {% else %}
+      <div class="empty"><i class="fa-solid fa-chart-bar"></i><p>No attendance data available.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ────────────────────────── CRM ───────────────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#fff7ed,#fed7aa);"><i class="fa-solid fa-funnel-dollar" style="color:#b8460b;"></i></div>
+    <h3>CRM — Pipeline & Leads</h3>
+    <div class="line"></div>
+    <a href="/app/lead" style="display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--orange);text-decoration:none;white-space:nowrap;background:rgba(184,70,11,.07);border:1px solid rgba(184,70,11,.15);padding:4px 12px;border-radius:6px;font-weight:600;" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square"></i>Open CRM</a>
+  </div>
+
+  <div class="g4" style="margin-bottom:16px;">
+    <div class="kpi orange">
+      <div class="ico" style="background:#fff7ed;"><i class="fa-solid fa-user-tag" style="color:#b8460b;"></i></div>
+      <div class="lbl">Total Leads</div>
+      <div class="val">{{ total_leads }}</div>
+      <div class="sub">Open/Active: <b>{{ leads_open }}</b></div>
+    </div>
+    <div class="kpi green">
+      <div class="ico" style="background:#ecfdf5;"><i class="fa-solid fa-check-double" style="color:#1d7a4f;"></i></div>
+      <div class="lbl">Leads Converted</div>
+      <div class="val">{{ leads_converted }}</div>
+      <div class="sub"><span class="badge-sm bg-green">Converted to customer</span></div>
+    </div>
+    <div class="kpi gold">
+      <div class="ico" style="background:#fef9c3;"><i class="fa-solid fa-file-signature" style="color:#713f12;"></i></div>
+      <div class="lbl">Total Quotations</div>
+      <div class="val">{{ total_quotations }}</div>
+      <div class="sub">Opportunities: <b>{{ total_opportunities }}</b></div>
+    </div>
+    <div class="kpi navy">
+      <div class="ico" style="background:#eff6ff;"><i class="fa-solid fa-handshake" style="color:var(--navy);"></i></div>
+      <div class="lbl">Pipeline Value</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ opp_pipeline_val }}</div>
+      <div class="sub">Open opportunities</div>
+    </div>
+  </div>
+
+  <!-- CRM Charts -->
+  <div class="g2" style="margin-bottom:16px;">
+    <!-- Leads by Status Donut -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-chart-pie" style="color:#b8460b;"></i> Leads by Status</h5>
+        <span class="ptag">{{ period_label }}</span>
+      </div>
+      {% if total_leads > 0 %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center;">
+        <canvas id="leadDonutChart" height="200"></canvas>
+        <div>
+          {% set lead_colors = ["#0B1F4B","#1d7a4f","#C9A84C","#c0392b","#7b2d8b","#b8460b","#6b7a99","#0891b2"] %}
+          {% for row in leads %}
+          <div class="pbar-wrap">
+            <span class="pbar-lbl">{{ row.status }}</span>
+            <div class="pbar-track">
+              <div class="pbar-fill" style="width:{{ (row.cnt / total_leads * 100)|round|int }}%;background:{{ lead_colors[loop.index0 % lead_colors|length] }};"></div>
+            </div>
+            <span class="pbar-cnt">{{ row.cnt }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty"><i class="fa-solid fa-user-tag"></i><p>No leads created in this period.</p></div>
+      {% endif %}
+    </div>
+
+    <!-- Quotations by Status -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-chart-bar" style="color:#b8460b;"></i> Quotations by Status</h5>
+        <span class="ptag">{{ period_label }}</span>
+      </div>
+      {% if total_quotations > 0 %}
+      <canvas id="quoteBarChart" height="200"></canvas>
+      <div style="margin-top:14px;">
+        {% set qcolors = {"Open":"#0B1F4B","Ordered":"#1d7a4f","Lost":"#c0392b","Cancelled":"#6b7a99","Draft":"#C9A84C"} %}
+        {% for row in quotations %}
+        <div class="pbar-wrap">
+          <span class="pbar-lbl">{{ row.status }}</span>
+          <div class="pbar-track">
+            <div class="pbar-fill" style="width:{{ (row.cnt / total_quotations * 100)|round|int }}%;background:{{ qcolors.get(row.status, '#6b7a99') }};"></div>
+          </div>
+          <span class="pbar-cnt">{{ row.cnt }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty"><i class="fa-solid fa-file-signature"></i><p>No quotations in this period.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent Leads Table -->
+  <div class="ccard" style="margin-bottom:24px;">
+    <div class="ccard-hdr">
+      <h5><i class="fa-solid fa-list" style="color:#b8460b;"></i> Recent Leads</h5>
+      <a href="/app/lead/new" style="background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);font-weight:600;padding:5px 14px;border-radius:7px;font-size:.78rem;text-decoration:none;" target="_blank"><i class="fa-solid fa-plus me-1"></i>New Lead</a>
+    </div>
+    {% if recent_leads %}
+    <div style="overflow-x:auto;">
+      <table class="dtbl">
+        <thead>
+          <tr>
+            <th>Lead</th>
+            <th>Company</th>
+            <th>Owner</th>
+            <th>Status</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recent_leads %}
+          <tr>
+            <td><a href="/app/lead/{{ r.name }}" style="font-weight:600;color:var(--navy);text-decoration:none;" target="_blank">{{ r.lead_name or r.name }}</a></td>
+            <td style="color:var(--muted);">{{ r.company_name or "—" }}</td>
+            <td style="color:var(--muted);">{{ r.lead_owner or "—" }}</td>
+            <td>
+              {% if r.status in ["Converted"] %}<span class="st-badge st-conv">{{ r.status }}</span>
+              {% elif r.status in ["Open","Lead","Replied","Interested"] %}<span class="st-badge st-open">{{ r.status }}</span>
+              {% elif r.status in ["Do Not Contact","Lost Quotation"] %}<span class="st-badge st-lost">{{ r.status }}</span>
+              {% else %}<span class="st-badge st-draft">{{ r.status }}</span>{% endif %}
+            </td>
+            <td style="color:var(--muted);">{{ r.creation_fmt }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><i class="fa-solid fa-user-tag"></i><p>No leads found.</p></div>
+    {% endif %}
+  </div>
+
+  <!-- ────────────────────────── ASSETS ────────────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);"><i class="fa-solid fa-boxes-stacked" style="color:var(--navy);"></i></div>
+    <h3>Assets</h3>
+    <div class="line"></div>
+    <a href="/app/asset" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--navy);text-decoration:none;white-space:nowrap;background:rgba(11,31,75,.07);border:1px solid rgba(11,31,75,.12);padding:4px 12px;border-radius:6px;font-weight:600;"><i class="fa-solid fa-arrow-up-right-from-square"></i>View All</a>
+  </div>
+
+  <div class="g3" style="margin-bottom:16px;">
+    <div class="kpi navy">
+      <div class="ico" style="background:#eff6ff;"><i class="fa-solid fa-boxes-stacked" style="color:var(--navy);"></i></div>
+      <div class="lbl">Total Assets</div>
+      <div class="val">{{ total_assets }}</div>
+      <div class="sub">New this year: <b>{{ new_assets }}</b></div>
+    </div>
+    <div class="kpi gold">
+      <div class="ico" style="background:#fef9c3;"><i class="fa-solid fa-dollar-sign" style="color:#713f12;"></i></div>
+      <div class="lbl">Gross Asset Value</div>
+      <div class="val sm"><span class="cur">{{ currency }}</span>{{ asset_value }}</div>
+    </div>
+    <div class="ccard" style="padding:16px 18px;">
+      <div class="ccard-hdr" style="margin-bottom:10px;">
+        <h5 style="font-size:.88rem;"><i class="fa-solid fa-chart-pie" style="color:var(--gold);"></i> By Category</h5>
+      </div>
+      {% if asset_categories %}
+      {% set max_val = asset_categories[0].val %}
+      {% for r in asset_categories %}
+      <div class="pbar-wrap">
+        <span class="pbar-lbl">{{ r.asset_category }}</span>
+        <div class="pbar-track">
+          <div class="pbar-fill" style="width:{% if max_val > 0 %}{{ (r.val / max_val * 100)|round|int }}{% else %}0{% endif %}%;background:var(--navy);"></div>
+        </div>
+        <span class="pbar-cnt">{{ r.cnt }}</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty" style="padding:12px;"><i class="fa-solid fa-boxes-stacked"></i><p>No assets.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ────────────────────────── PROJECTS ──────────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);"><i class="fa-solid fa-diagram-project" style="color:#1d7a4f;"></i></div>
+    <h3>Projects & Tasks</h3>
+    <div class="line"></div>
+    <a href="/app/project" style="display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--green);text-decoration:none;white-space:nowrap;background:rgba(29,122,79,.07);border:1px solid rgba(29,122,79,.15);padding:4px 12px;border-radius:6px;font-weight:600;" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square"></i>View All</a>
+  </div>
+
+  <div class="g2" style="margin-bottom:24px;">
+    <!-- Project status chart -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-chart-pie" style="color:#1d7a4f;"></i> Project Status</h5>
+        <span class="ptag">All Time</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center;">
+        <div>
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-family:'Playfair Display',serif;font-size:2.2rem;font-weight:800;color:var(--navy);">{{ total_projects }}</div>
+            <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Total Projects</div>
+          </div>
+          {% set pcolors = {"Open":"#C9A84C","Completed":"#1d7a4f","Cancelled":"#6b7a99"} %}
+          {% for r in project_statuses %}
+          <div class="pbar-wrap">
+            <span class="pbar-lbl">{{ r.status }}</span>
+            <div class="pbar-track">
+              <div class="pbar-fill" style="width:{% if total_projects > 0 %}{{ (r.cnt / total_projects * 100)|round|int }}{% else %}0{% endif %}%;background:{{ pcolors.get(r.status, '#6b7a99') }};"></div>
+            </div>
+            <span class="pbar-cnt">{{ r.cnt }}</span>
+          </div>
+          {% endfor %}
+          <div style="margin-top:10px;font-size:.75rem;color:var(--muted);">
+            Overdue Tasks: <b style="color:#c0392b;">{{ overdue_tasks }}</b>
+          </div>
+        </div>
+        {% if total_projects > 0 %}
+        <canvas id="projDonutChart" height="160"></canvas>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent Projects -->
+    <div class="ccard">
+      <div class="ccard-hdr">
+        <h5><i class="fa-solid fa-list-check" style="color:#1d7a4f;"></i> Recent Projects</h5>
+      </div>
+      {% if recent_projects %}
+      {% for r in recent_projects %}
+      <div class="proj-item">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div class="proj-name">
+            <a href="/app/project/{{ r.name }}" style="color:var(--text);text-decoration:none;" target="_blank">{{ r.project_name }}</a>
+          </div>
+          {% if r.status == "Completed" %}<span class="st-badge st-conv" style="font-size:.65rem;">{{ r.status }}</span>
+          {% elif r.status == "Open" %}<span class="st-badge st-open" style="font-size:.65rem;">{{ r.status }}</span>
+          {% else %}<span class="st-badge st-draft" style="font-size:.65rem;">{{ r.status }}</span>{% endif %}
+        </div>
+        <div class="proj-meta">
+          <span><i class="fa-regular fa-calendar me-1"></i>Due: {{ r.end_fmt }}</span>
+          <span><i class="fa-solid fa-percent me-1"></i>{{ r.pct }}%</span>
+        </div>
+        <div class="proj-pbar">
+          <div class="proj-pbar-fill" style="width:{{ r.pct }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty"><i class="fa-solid fa-diagram-project"></i><p>No projects found.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ────────────────────────── QUICK LINKS ───────────────── -->
+  <div class="section-hdr">
+    <div class="sec-icon" style="background:linear-gradient(135deg,#fef9c3,#fde68a);"><i class="fa-solid fa-bolt" style="color:#713f12;"></i></div>
+    <h3>Quick Links</h3>
+    <div class="line"></div>
+  </div>
+  <div class="qlink-grid" style="margin-bottom:40px;">
+    {% for icon, label, link, col in [
+      ("fa-file-invoice","Sales Invoice","/app/sales-invoice","#0B1F4B"),
+      ("fa-receipt","Purchase Invoice","/app/purchase-invoice","#1d7a4f"),
+      ("fa-money-bill-wave","Payment Entry","/app/payment-entry","#C9A84C"),
+      ("fa-book","Journal Entry","/app/journal-entry","#7b2d8b"),
+      ("fa-user-tag","Lead","/app/lead","#b8460b"),
+      ("fa-file-signature","Quotation","/app/quotation","#0891b2"),
+      ("fa-handshake","Opportunity","/app/opportunity","#0B1F4B"),
+      ("fa-user-tie","Employee","/app/employee","#1d7a4f"),
+      ("fa-calendar","Leave Application","/app/leave-application","#7b2d8b"),
+      ("fa-id-card","Salary Slip","/app/salary-slip","#b8460b"),
+      ("fa-calendar-days","Attendance","/app/attendance","#c0392b"),
+      ("fa-diagram-project","Project","/app/project","#0B1F4B"),
+      ("fa-list-check","Task","/app/task","#1d7a4f"),
+      ("fa-clock","Timesheet","/app/timesheet","#C9A84C"),
+      ("fa-boxes-stacked","Asset","/app/asset","#7b2d8b"),
+      ("fa-chart-line","Trial Balance","/app/query-report/Trial%20Balance","#0891b2"),
+      ("fa-file-chart-pie","P&L Statement","/app/query-report/Profit%20and%20Loss%20Statement","#0B1F4B"),
+      ("fa-balance-scale","Balance Sheet","/app/query-report/Balance%20Sheet","#1d7a4f"),
+    ] %}
+    <a href="{{ link }}" class="qlink" target="_blank">
+      <i class="fa-solid {{ icon }}" style="color:{{ col }};"></i>
+      <span>{{ label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+</div><!-- end dash-body -->
+{% endif %}
+
+<!-- ══════════════════ MODAL FORMS ════════════════════════════ -->
+
+<!-- 1. NEW EMPLOYEE -->
+<div class="fdr-overlay" id="modal-employee">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-user-tie" style="color:var(--gold);margin-right:8px;"></i>New Employee</h3>
+        <p>HR Module — Create employee record</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-employee')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>First Name *</label><input id="emp-first" type="text" placeholder="e.g. John"></div>
+        <div class="fdr-group"><label>Last Name *</label><input id="emp-last" type="text" placeholder="e.g. Smith"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Company *</label><select id="emp-company"></select></div>
+        <div class="fdr-group"><label>Date of Joining *</label><input id="emp-doj" type="date"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Department</label><select id="emp-dept"><option value="">— Select —</option></select></div>
+        <div class="fdr-group"><label>Designation</label><input id="emp-desig" type="text" placeholder="e.g. Manager"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Employment Type</label>
+          <select id="emp-type">
+            <option value="Full-time">Full-time</option><option value="Part-time">Part-time</option>
+            <option value="Contract">Contract</option><option value="Intern">Intern</option>
+          </select>
+        </div>
+        <div class="fdr-group"><label>Gender</label>
+          <select id="emp-gender">
+            <option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="fdr-group"><label>Personal Email</label><input id="emp-email" type="email" placeholder="john@example.com"></div>
+      <div class="fdr-success" id="emp-success"><i class="fa-solid fa-circle-check"></i><span>Employee created! <a id="emp-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open record →</a></span></div>
+      <div class="fdr-error" id="emp-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-employee')">Cancel</button>
+      <button class="btn-submit" id="emp-submit" onclick="submitEmployee()"><i class="fa-solid fa-floppy-disk me-1"></i>Create Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- 2. SALES INVOICE -->
+<div class="fdr-overlay" id="modal-sales-invoice">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-file-invoice" style="color:var(--gold);margin-right:8px;"></i>Sales Invoice</h3>
+        <p>Billing — Create new sales invoice</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-sales-invoice')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Customer *</label><select id="si-customer"></select></div>
+        <div class="fdr-group"><label>Company *</label><select id="si-company"></select></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Posting Date *</label><input id="si-date" type="date"></div>
+        <div class="fdr-group"><label>Due Date</label><input id="si-due" type="date"></div>
+      </div>
+      <div class="fdr-section-title"><i class="fa-solid fa-list" style="margin-right:6px;"></i>Items</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Item</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Qty</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Rate</span>
+        <span></span>
+      </div>
+      <div id="si-items">
+        <div class="fdr-item-row"><input placeholder="Item code/name" class="si-item-code"><input type="number" value="1" min="1" class="si-item-qty"><input type="number" value="0" min="0" class="si-item-rate"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button></div>
+      </div>
+      <button class="btn-add-row" onclick="addSIRow()"><i class="fa-solid fa-plus me-1"></i>Add Item</button>
+      <div class="fdr-group" style="margin-top:14px;"><label>Remarks</label><textarea id="si-remarks" rows="2" placeholder="Optional remarks..."></textarea></div>
+      <div class="fdr-success" id="si-success"><i class="fa-solid fa-circle-check"></i><span>Invoice created! <a id="si-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="si-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-sales-invoice')">Cancel</button>
+      <button class="btn-submit" id="si-submit" onclick="submitSalesInvoice()"><i class="fa-solid fa-floppy-disk me-1"></i>Save as Draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- 3. CUSTOMER -->
+<div class="fdr-overlay" id="modal-customer">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-handshake" style="color:var(--gold);margin-right:8px;"></i>New Customer</h3>
+        <p>CRM — Add a new customer record</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-customer')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-group"><label>Customer Name *</label><input id="cust-name" type="text" placeholder="e.g. Acme Corp"></div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Customer Type *</label>
+          <select id="cust-type"><option value="Company">Company</option><option value="Individual">Individual</option></select>
+        </div>
+        <div class="fdr-group"><label>Customer Group</label><select id="cust-group"></select></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Territory</label><select id="cust-territory"></select></div>
+        <div class="fdr-group"><label>Currency</label><select id="cust-currency"></select></div>
+      </div>
+      <div class="fdr-group"><label>Website</label><input id="cust-website" type="url" placeholder="https://"></div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Mobile No.</label><input id="cust-mobile" type="tel" placeholder="+971 ..."></div>
+        <div class="fdr-group"><label>Email ID</label><input id="cust-email" type="email" placeholder="contact@..."></div>
+      </div>
+      <div class="fdr-success" id="cust-success"><i class="fa-solid fa-circle-check"></i><span>Customer created! <a id="cust-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="cust-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-customer')">Cancel</button>
+      <button class="btn-submit" id="cust-submit" onclick="submitCustomer()"><i class="fa-solid fa-floppy-disk me-1"></i>Create Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- 4. DELIVERY NOTE -->
+<div class="fdr-overlay" id="modal-delivery-note">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-truck" style="color:var(--gold);margin-right:8px;"></i>Delivery Note</h3>
+        <p>Stock — Record a new delivery</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-delivery-note')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Customer *</label><select id="dn-customer"></select></div>
+        <div class="fdr-group"><label>Company *</label><select id="dn-company"></select></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Posting Date *</label><input id="dn-date" type="date"></div>
+        <div class="fdr-group"><label>Posting Time</label><input id="dn-time" type="time" value="09:00:00"></div>
+      </div>
+      <div class="fdr-group"><label>Target Warehouse</label><select id="dn-warehouse"></select></div>
+      <div class="fdr-section-title"><i class="fa-solid fa-boxes-stacked" style="margin-right:6px;"></i>Items</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Item</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Qty</span>
+        <span></span>
+      </div>
+      <div id="dn-items">
+        <div class="fdr-item-row" style="grid-template-columns:2fr 1fr auto;"><input placeholder="Item code" class="dn-item-code"><input type="number" value="1" min="1" class="dn-item-qty"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button></div>
+      </div>
+      <button class="btn-add-row" onclick="addDNRow()"><i class="fa-solid fa-plus me-1"></i>Add Item</button>
+      <div class="fdr-success" id="dn-success"><i class="fa-solid fa-circle-check"></i><span>Delivery Note created! <a id="dn-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="dn-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-delivery-note')">Cancel</button>
+      <button class="btn-submit" id="dn-submit" onclick="submitDeliveryNote()"><i class="fa-solid fa-floppy-disk me-1"></i>Save Draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- 5. PURCHASE ORDER -->
+<div class="fdr-overlay" id="modal-purchase-order">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-cart-shopping" style="color:var(--gold);margin-right:8px;"></i>Purchase Order</h3>
+        <p>Buying — Create new purchase order</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-purchase-order')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Supplier *</label><select id="po-supplier"></select></div>
+        <div class="fdr-group"><label>Company *</label><select id="po-company"></select></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Order Date *</label><input id="po-date" type="date"></div>
+        <div class="fdr-group"><label>Expected Delivery</label><input id="po-delivery" type="date"></div>
+      </div>
+      <div class="fdr-section-title"><i class="fa-solid fa-list" style="margin-right:6px;"></i>Items</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Item</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Qty</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Rate</span>
+        <span></span>
+      </div>
+      <div id="po-items">
+        <div class="fdr-item-row"><input placeholder="Item code" class="po-item-code"><input type="number" value="1" min="1" class="po-item-qty"><input type="number" value="0" min="0" class="po-item-rate"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button></div>
+      </div>
+      <button class="btn-add-row" onclick="addPORow()"><i class="fa-solid fa-plus me-1"></i>Add Item</button>
+      <div class="fdr-success" id="po-success"><i class="fa-solid fa-circle-check"></i><span>Purchase Order saved! <a id="po-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="po-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-purchase-order')">Cancel</button>
+      <button class="btn-submit" id="po-submit" onclick="submitPurchaseOrder()"><i class="fa-solid fa-floppy-disk me-1"></i>Save Draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- 6. ASSET -->
+<div class="fdr-overlay" id="modal-asset">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-boxes-stacked" style="color:var(--gold);margin-right:8px;"></i>New Asset</h3>
+        <p>Assets Module — Register a business asset</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-asset')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-group"><label>Asset Name *</label><input id="ast-name" type="text" placeholder="e.g. Office Laptop — HP EliteBook"></div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Asset Category *</label><select id="ast-category"></select></div>
+        <div class="fdr-group"><label>Company *</label><select id="ast-company"></select></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Purchase Date *</label><input id="ast-pdate" type="date"></div>
+        <div class="fdr-group"><label>Available For Use Date</label><input id="ast-avail" type="date"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Gross Purchase Amount *</label><input id="ast-val" type="number" min="0" placeholder="0.00"></div>
+        <div class="fdr-group"><label>Location</label><input id="ast-loc" type="text" placeholder="e.g. Head Office"></div>
+      </div>
+      <div class="fdr-group"><label>Custodian (Employee)</label><input id="ast-custodian" type="text" placeholder="Employee ID or name"></div>
+      <div class="fdr-success" id="ast-success"><i class="fa-solid fa-circle-check"></i><span>Asset created! <a id="ast-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="ast-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-asset')">Cancel</button>
+      <button class="btn-submit" id="ast-submit" onclick="submitAsset()"><i class="fa-solid fa-floppy-disk me-1"></i>Create Asset</button>
+    </div>
+  </div>
+</div>
+
+<!-- 7. JOURNAL ENTRY (Accounts) -->
+<div class="fdr-overlay" id="modal-journal">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-book" style="color:var(--gold);margin-right:8px;"></i>Journal Entry</h3>
+        <p>Accounts — Post a manual journal entry</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-journal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Voucher Type *</label>
+          <select id="je-type">
+            <option value="Journal Entry">Journal Entry</option>
+            <option value="Bank Entry">Bank Entry</option>
+            <option value="Cash Entry">Cash Entry</option>
+            <option value="Credit Note">Credit Note</option>
+            <option value="Debit Note">Debit Note</option>
+            <option value="Contra Entry">Contra Entry</option>
+          </select>
+        </div>
+        <div class="fdr-group"><label>Posting Date *</label><input id="je-date" type="date"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Company *</label><select id="je-company"></select></div>
+        <div class="fdr-group"><label>User Remark</label><input id="je-remark" type="text" placeholder="Optional note..."></div>
+      </div>
+      <div class="fdr-section-title"><i class="fa-solid fa-table" style="margin-right:6px;"></i>Accounts</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:6px;">
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Account</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Debit</span>
+        <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;">Credit</span>
+      </div>
+      <div id="je-accounts">
+        <div class="fdr-item-row" style="grid-template-columns:2fr 1fr 1fr;"><input placeholder="Account name" class="je-acc"><input type="number" value="0" min="0" class="je-debit"><input type="number" value="0" min="0" class="je-credit"></div>
+        <div class="fdr-item-row" style="grid-template-columns:2fr 1fr 1fr;"><input placeholder="Account name" class="je-acc"><input type="number" value="0" min="0" class="je-debit"><input type="number" value="0" min="0" class="je-credit"></div>
+      </div>
+      <button class="btn-add-row" onclick="addJERow()"><i class="fa-solid fa-plus me-1"></i>Add Account Row</button>
+      <div class="fdr-success" id="je-success"><i class="fa-solid fa-circle-check"></i><span>Journal Entry created! <a id="je-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="je-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-journal')">Cancel</button>
+      <button class="btn-submit" id="je-submit" onclick="submitJournal()"><i class="fa-solid fa-floppy-disk me-1"></i>Save Draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- 8. PROJECT -->
+<div class="fdr-overlay" id="modal-project">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-diagram-project" style="color:var(--gold);margin-right:8px;"></i>New Project</h3>
+        <p>Projects — Create and track a project</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-project')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-group"><label>Project Name *</label><input id="proj-name" type="text" placeholder="e.g. Website Redesign"></div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Status</label>
+          <select id="proj-status"><option value="Open">Open</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select>
+        </div>
+        <div class="fdr-group"><label>Priority</label>
+          <select id="proj-priority"><option value="Medium">Medium</option><option value="High">High</option><option value="Low">Low</option></select>
+        </div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Expected Start Date</label><input id="proj-start" type="date"></div>
+        <div class="fdr-group"><label>Expected End Date</label><input id="proj-end" type="date"></div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Company *</label><select id="proj-company"></select></div>
+        <div class="fdr-group"><label>Customer</label><select id="proj-customer"></select></div>
+      </div>
+      <div class="fdr-group"><label>Department</label><select id="proj-dept"></select></div>
+      <div class="fdr-group"><label>Project Description</label><textarea id="proj-desc" rows="3" placeholder="Brief project overview..."></textarea></div>
+      <div class="fdr-success" id="proj-success"><i class="fa-solid fa-circle-check"></i><span>Project created! <a id="proj-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="proj-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-project')">Cancel</button>
+      <button class="btn-submit" id="proj-submit" onclick="submitProject()"><i class="fa-solid fa-floppy-disk me-1"></i>Create Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- 9. TASK -->
+<div class="fdr-overlay" id="modal-task">
+  <div class="fdr-panel">
+    <div class="fdr-panel-hdr">
+      <div>
+        <h3><i class="fa-solid fa-list-check" style="color:var(--gold);margin-right:8px;"></i>New Task</h3>
+        <p>Tasks — Add a task (linked to project or standalone)</p>
+      </div>
+      <button class="fdr-close" onclick="closeModal('modal-task')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fdr-panel-body">
+      <div class="fdr-group"><label>Task Subject *</label><input id="task-subject" type="text" placeholder="e.g. Prepare quarterly report"></div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Project</label><select id="task-project"></select></div>
+        <div class="fdr-group"><label>Status</label>
+          <select id="task-status">
+            <option value="Open">Open</option><option value="Working">Working</option>
+            <option value="Pending Review">Pending Review</option><option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="fdr-row2">
+        <div class="fdr-group"><label>Priority</label>
+          <select id="task-priority">
+            <option value="Medium">Medium</option><option value="High">High</option>
+            <option value="Low">Low</option><option value="Urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="fdr-group"><label>Expected End Date</label><input id="task-end" type="date"></div>
+      </div>
+      <div class="fdr-group"><label>Assigned To</label><input id="task-assigned" type="email" placeholder="user@example.com"></div>
+      <div class="fdr-group"><label>Description</label><textarea id="task-desc" rows="3" placeholder="Task details..."></textarea></div>
+      <div class="fdr-success" id="task-success"><i class="fa-solid fa-circle-check"></i><span>Task created! <a id="task-link" href="#" target="_blank" style="color:var(--green);text-decoration:underline;">Open →</a></span></div>
+      <div class="fdr-error" id="task-error"></div>
+    </div>
+    <div class="fdr-panel-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('modal-task')">Cancel</button>
+      <button class="btn-submit" id="task-submit" onclick="submitTask()"><i class="fa-solid fa-floppy-disk me-1"></i>Create Task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+{% if not is_guest %}
+
+// ── Trend Chart (Revenue vs Purchase) ────────────────────────
+const trendCtx = document.getElementById('trendChart');
+if (trendCtx) {
+  new Chart(trendCtx, {
+    type: 'bar',
+    data: {
+      labels: {{ trend_labels|tojson }},
+      datasets: [
+        {
+          label: 'Sales Revenue',
+          data: {{ trend_sales|tojson }},
+          backgroundColor: 'rgba(29,122,79,.75)',
+          borderRadius: 5,
+          borderSkipped: false,
+          order: 2,
+        },
+        {
+          label: 'Purchase Expenses',
+          data: {{ trend_purchase|tojson }},
+          backgroundColor: 'rgba(192,57,43,.7)',
+          borderRadius: 5,
+          borderSkipped: false,
+          order: 2,
+        },
+        {
+          label: 'Net Profit',
+          data: {{ trend_sales|tojson }}.map((s,i) => s - {{ trend_purchase|tojson }}[i]),
+          type: 'line',
+          borderColor: 'rgba(11,31,75,1)',
+          backgroundColor: 'rgba(11,31,75,.1)',
+          borderWidth: 2,
+          pointBackgroundColor: '#0B1F4B',
+          pointRadius: 4,
+          fill: false,
+          tension: 0.4,
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      responsive:true,maintainAspectRatio:true,
+      plugins:{
+        legend:{position:'top',labels:{font:{family:'Inter',size:11},boxWidth:12,padding:16}},
+        tooltip:{callbacks:{label:ctx=>' {{ currency }} '+ctx.parsed.y.toLocaleString()}}
+      },
+      scales:{
+        y:{beginAtZero:true,ticks:{callback:v=>'{{ currency }} '+(v>=1000?(v/1000).toFixed(0)+'K':v),font:{family:'Inter',size:10}},grid:{color:'rgba(0,0,0,.04)'}},
+        x:{ticks:{font:{family:'Inter',size:10}},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── Attendance Donut ─────────────────────────────────────────
+const attDonutCtx = document.getElementById('attDonutChart');
+if (attDonutCtx) {
+  new Chart(attDonutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: {{ att_labels|tojson }},
+      datasets: [{
+        data: {{ att_values|tojson }},
+        backgroundColor: ['#1d7a4f','#c0392b','#C9A84C','#7b2d8b','#0B1F4B','#6b7a99'],
+        borderWidth: 2, borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive:true, cutout:'65%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.parsed}}
+      }
+    }
+  });
+}
+
+// ── Attendance Bar Chart ──────────────────────────────────────
+const attBarCtx = document.getElementById('attBarChart');
+if (attBarCtx) {
+  new Chart(attBarCtx, {
+    type: 'bar',
+    data: {
+      labels: {{ att_labels|tojson }},
+      datasets: [{
+        label: 'Count',
+        data: {{ att_values|tojson }},
+        backgroundColor: ['#1d7a4f','#c0392b','#C9A84C','#7b2d8b','#0B1F4B','#6b7a99'],
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive:true, indexAxis:'y',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>' Count: '+ctx.parsed.x}}
+      },
+      scales:{
+        x:{beginAtZero:true,ticks:{font:{family:'Inter',size:10}},grid:{color:'rgba(0,0,0,.04)'}},
+        y:{ticks:{font:{family:'Inter',size:10}},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── Lead Status Donut ─────────────────────────────────────────
+const leadDonutCtx = document.getElementById('leadDonutChart');
+if (leadDonutCtx && {{ total_leads }} > 0) {
+  new Chart(leadDonutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: {{ lead_labels|tojson }},
+      datasets: [{
+        data: {{ lead_values|tojson }},
+        backgroundColor: ['#0B1F4B','#1d7a4f','#C9A84C','#c0392b','#7b2d8b','#b8460b','#6b7a99','#0891b2'],
+        borderWidth: 2, borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive:true, cutout:'65%',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.parsed}}}
+    }
+  });
+}
+
+// ── Quotation Bar Chart ───────────────────────────────────────
+const quoteBarCtx = document.getElementById('quoteBarChart');
+if (quoteBarCtx && {{ total_quotations }} > 0) {
+  const qColors = {'Open':'#0B1F4B','Ordered':'#1d7a4f','Lost':'#c0392b','Cancelled':'#6b7a99','Draft':'#C9A84C'};
+  const qLabels = {{ quote_labels|tojson }};
+  new Chart(quoteBarCtx, {
+    type: 'bar',
+    data: {
+      labels: qLabels,
+      datasets: [{
+        label: 'Quotations',
+        data: {{ quote_values|tojson }},
+        backgroundColor: qLabels.map(l=>qColors[l]||'#6b7a99'),
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>' Count: '+ctx.parsed.y}}},
+      scales:{
+        y:{beginAtZero:true,ticks:{font:{family:'Inter',size:10}},grid:{color:'rgba(0,0,0,.04)'}},
+        x:{ticks:{font:{family:'Inter',size:10}},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── Project Status Donut ──────────────────────────────────────
+const projDonutCtx = document.getElementById('projDonutChart');
+if (projDonutCtx && {{ total_projects }} > 0) {
+  const pColors = {'Open':'#C9A84C','Completed':'#1d7a4f','Cancelled':'#6b7a99'};
+  const pLabels = {{ proj_labels|tojson }};
+  new Chart(projDonutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: pLabels,
+      datasets: [{
+        data: {{ proj_values|tojson }},
+        backgroundColor: pLabels.map(l=>pColors[l]||'#6b7a99'),
+        borderWidth: 2, borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive:true, cutout:'60%',
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.parsed}}}
+    }
+  });
+}
+
+
+// ── Modal helpers ─────────────────────────────────────────────
+const today = new Date().toISOString().split('T')[0];
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (id === 'modal-employee')     initEmployee();
+  if (id === 'modal-sales-invoice') initSalesInvoice();
+  if (id === 'modal-customer')     initCustomer();
+  if (id === 'modal-delivery-note') initDeliveryNote();
+  if (id === 'modal-purchase-order') initPurchaseOrder();
+  if (id === 'modal-asset')        initAsset();
+  if (id === 'modal-journal')      initJournal();
+  if (id === 'modal-project')      initProject();
+  if (id === 'modal-task')         initTask();
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.querySelectorAll('.fdr-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+function _setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
+
+function _fillSelect(id, items, valKey, lblKey, addBlank) {
+  const el = document.getElementById(id); if (!el) return;
+  el.innerHTML = addBlank ? '<option value="">— Select —</option>' : '';
+  (items||[]).forEach(i => {
+    const o = document.createElement('option');
+    o.value = i[valKey]; o.textContent = i[lblKey] || i[valKey]; el.appendChild(o);
+  });
+}
+
+function _post(doctype, doc, successId, errorId, submitId, linkId, path) {
+  const btn = document.getElementById(submitId);
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Saving…';
+  document.getElementById(successId).style.display = 'none';
+  document.getElementById(errorId).style.display = 'none';
+
+  fetch('/api/resource/' + encodeURIComponent(doctype), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Frappe-CSRF-Token': frappe.csrf_token },
+    body: JSON.stringify(doc)
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Save';
+    if (data.data && data.data.name) {
+      const s = document.getElementById(successId); s.style.display = 'flex';
+      if (linkId) { const a = document.getElementById(linkId); if(a) a.href = '/app/' + path + '/' + encodeURIComponent(data.data.name); }
+    } else {
+      const e = document.getElementById(errorId);
+      e.style.display = 'block';
+      e.textContent = (data.exc_type || '') + ': ' + (data.message || JSON.stringify(data._server_messages || data));
+    }
+  })
+  .catch(err => {
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk me-1"></i>Save';
+    const e = document.getElementById(errorId); e.style.display = 'block'; e.textContent = 'Request failed: ' + err.message;
+  });
+}
+
+// Fetch common lists
+let _companies=[], _customers=[], _suppliers=[], _departments=[], _warehouses=[], _projects_list=[];
+let _cust_groups=[], _territories=[], _currencies=[], _asset_cats=[];
+
+function _fetchLists() {
+  const q = (dt, fields, filters, cb) => {
+    fetch('/api/resource/' + dt + '?fields=' + JSON.stringify(fields) + (filters?'&filters='+JSON.stringify(filters):'') + '&limit=200')
+      .then(r=>r.json()).then(d=>cb(d.data||[])).catch(()=>cb([]));
+  };
+  q('Company', ['name'], null, r => _companies = r);
+  q('Customer', ['name'], [['disabled','=',0]], r => _customers = r);
+  q('Supplier', ['name'], [['disabled','=',0]], r => _suppliers = r);
+  q('Department', ['name'], null, r => _departments = r);
+  q('Warehouse', ['name'], [['disabled','=',0]], r => _warehouses = r);
+  q('Project', ['name','project_name'], [['status','=','Open']], r => _projects_list = r);
+  q('Customer Group', ['name'], null, r => _cust_groups = r);
+  q('Territory', ['name'], null, r => _territories = r);
+  q('Currency', ['name'], [['enabled','=',1]], r => _currencies = r);
+  q('Asset Category', ['name'], null, r => _asset_cats = r);
+}
+_fetchLists();
+
+function delRow(btn) { btn.closest('.fdr-item-row').remove(); }
+function addSIRow() {
+  const d=document.getElementById('si-items'); const r=document.createElement('div'); r.className='fdr-item-row';
+  r.innerHTML='<input placeholder="Item code/name" class="si-item-code"><input type="number" value="1" min="1" class="si-item-qty"><input type="number" value="0" min="0" class="si-item-rate"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button>';
+  d.appendChild(r);
+}
+function addDNRow() {
+  const d=document.getElementById('dn-items'); const r=document.createElement('div'); r.className='fdr-item-row'; r.style.gridTemplateColumns='2fr 1fr auto';
+  r.innerHTML='<input placeholder="Item code" class="dn-item-code"><input type="number" value="1" min="1" class="dn-item-qty"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button>';
+  d.appendChild(r);
+}
+function addPORow() {
+  const d=document.getElementById('po-items'); const r=document.createElement('div'); r.className='fdr-item-row';
+  r.innerHTML='<input placeholder="Item code" class="po-item-code"><input type="number" value="1" min="1" class="po-item-qty"><input type="number" value="0" min="0" class="po-item-rate"><button class="btn-del-row" onclick="delRow(this)"><i class="fa-solid fa-trash-can"></i></button>';
+  d.appendChild(r);
+}
+function addJERow() {
+  const d=document.getElementById('je-accounts'); const r=document.createElement('div'); r.className='fdr-item-row'; r.style.gridTemplateColumns='2fr 1fr 1fr';
+  r.innerHTML='<input placeholder="Account name" class="je-acc"><input type="number" value="0" min="0" class="je-debit"><input type="number" value="0" min="0" class="je-credit">';
+  d.appendChild(r);
+}
+
+// ── 1. Employee ───────────────────────────────────────────────
+function initEmployee() {
+  _setVal('emp-doj', today);
+  _fillSelect('emp-company', _companies, 'name', 'name', false);
+  _fillSelect('emp-dept', _departments, 'name', 'name', true);
+}
+function submitEmployee() {
+  const first=document.getElementById('emp-first').value.trim();
+  const last=document.getElementById('emp-last').value.trim();
+  if (!first||!last) { alert('First and Last name are required.'); return; }
+  _post('Employee', {
+    doctype:'Employee', first_name:first, last_name:last,
+    company: document.getElementById('emp-company').value,
+    date_of_joining: document.getElementById('emp-doj').value,
+    department: document.getElementById('emp-dept').value,
+    designation: document.getElementById('emp-desig').value,
+    gender: document.getElementById('emp-gender').value,
+    employment_type: document.getElementById('emp-type').value,
+    personal_email: document.getElementById('emp-email').value,
+  }, 'emp-success', 'emp-error', 'emp-submit', 'emp-link', 'employee');
+}
+
+// ── 2. Sales Invoice ─────────────────────────────────────────
+function initSalesInvoice() {
+  _setVal('si-date', today);
+  _fillSelect('si-company', _companies, 'name', 'name', false);
+  _fillSelect('si-customer', _customers, 'name', 'name', false);
+  const due = new Date(); due.setDate(due.getDate()+30);
+  _setVal('si-due', due.toISOString().split('T')[0]);
+}
+function submitSalesInvoice() {
+  const cust=document.getElementById('si-customer').value;
+  if(!cust){ alert('Please select a customer.'); return; }
+  const rows=[...document.querySelectorAll('#si-items .fdr-item-row')];
+  const items=rows.map(r=>({
+    item_code: r.querySelector('.si-item-code').value.trim(),
+    qty: parseFloat(r.querySelector('.si-item-qty').value)||1,
+    rate: parseFloat(r.querySelector('.si-item-rate').value)||0,
+  })).filter(i=>i.item_code);
+  if(!items.length){ alert('Add at least one item with an item code.'); return; }
+  _post('Sales Invoice', {
+    doctype:'Sales Invoice', customer:cust,
+    company: document.getElementById('si-company').value,
+    posting_date: document.getElementById('si-date').value,
+    due_date: document.getElementById('si-due').value,
+    remarks: document.getElementById('si-remarks').value,
+    items: items,
+  }, 'si-success', 'si-error', 'si-submit', 'si-link', 'sales-invoice');
+}
+
+// ── 3. Customer ───────────────────────────────────────────────
+function initCustomer() {
+  _fillSelect('cust-group', _cust_groups, 'name', 'name', true);
+  _fillSelect('cust-territory', _territories, 'name', 'name', true);
+  _fillSelect('cust-currency', _currencies, 'name', 'name', true);
+}
+function submitCustomer() {
+  const n=document.getElementById('cust-name').value.trim();
+  if(!n){ alert('Customer name is required.'); return; }
+  _post('Customer', {
+    doctype:'Customer', customer_name:n,
+    customer_type: document.getElementById('cust-type').value,
+    customer_group: document.getElementById('cust-group').value||'All Customer Groups',
+    territory: document.getElementById('cust-territory').value||'All Territories',
+    default_currency: document.getElementById('cust-currency').value,
+    website: document.getElementById('cust-website').value,
+    mobile_no: document.getElementById('cust-mobile').value,
+    email_id: document.getElementById('cust-email').value,
+  }, 'cust-success', 'cust-error', 'cust-submit', 'cust-link', 'customer');
+}
+
+// ── 4. Delivery Note ─────────────────────────────────────────
+function initDeliveryNote() {
+  _setVal('dn-date', today);
+  _fillSelect('dn-company', _companies, 'name', 'name', false);
+  _fillSelect('dn-customer', _customers, 'name', 'name', false);
+  _fillSelect('dn-warehouse', _warehouses, 'name', 'name', true);
+}
+function submitDeliveryNote() {
+  const cust=document.getElementById('dn-customer').value;
+  if(!cust){ alert('Please select a customer.'); return; }
+  const rows=[...document.querySelectorAll('#dn-items .fdr-item-row')];
+  const items=rows.map(r=>({
+    item_code: r.querySelector('.dn-item-code').value.trim(),
+    qty: parseFloat(r.querySelector('.dn-item-qty').value)||1,
+  })).filter(i=>i.item_code);
+  if(!items.length){ alert('Add at least one item.'); return; }
+  const wh=document.getElementById('dn-warehouse').value;
+  if(wh) items.forEach(i=>i.warehouse=wh);
+  _post('Delivery Note', {
+    doctype:'Delivery Note', customer:cust,
+    company: document.getElementById('dn-company').value,
+    posting_date: document.getElementById('dn-date').value,
+    posting_time: document.getElementById('dn-time').value,
+    items: items,
+  }, 'dn-success', 'dn-error', 'dn-submit', 'dn-link', 'delivery-note');
+}
+
+// ── 5. Purchase Order ────────────────────────────────────────
+function initPurchaseOrder() {
+  _setVal('po-date', today);
+  _fillSelect('po-company', _companies, 'name', 'name', false);
+  _fillSelect('po-supplier', _suppliers, 'name', 'name', false);
+}
+function submitPurchaseOrder() {
+  const sup=document.getElementById('po-supplier').value;
+  if(!sup){ alert('Please select a supplier.'); return; }
+  const rows=[...document.querySelectorAll('#po-items .fdr-item-row')];
+  const items=rows.map(r=>({
+    item_code: r.querySelector('.po-item-code').value.trim(),
+    qty: parseFloat(r.querySelector('.po-item-qty').value)||1,
+    rate: parseFloat(r.querySelector('.po-item-rate').value)||0,
+  })).filter(i=>i.item_code);
+  if(!items.length){ alert('Add at least one item.'); return; }
+  _post('Purchase Order', {
+    doctype:'Purchase Order', supplier:sup,
+    company: document.getElementById('po-company').value,
+    transaction_date: document.getElementById('po-date').value,
+    schedule_date: document.getElementById('po-delivery').value||today,
+    items: items,
+  }, 'po-success', 'po-error', 'po-submit', 'po-link', 'purchase-order');
+}
+
+// ── 6. Asset ─────────────────────────────────────────────────
+function initAsset() {
+  _setVal('ast-pdate', today);
+  _setVal('ast-avail', today);
+  _fillSelect('ast-company', _companies, 'name', 'name', false);
+  _fillSelect('ast-category', _asset_cats, 'name', 'name', false);
+}
+function submitAsset() {
+  const n=document.getElementById('ast-name').value.trim();
+  const cat=document.getElementById('ast-category').value;
+  if(!n||!cat){ alert('Asset name and category are required.'); return; }
+  _post('Asset', {
+    doctype:'Asset', asset_name:n,
+    asset_category:cat,
+    company: document.getElementById('ast-company').value,
+    purchase_date: document.getElementById('ast-pdate').value,
+    available_for_use_date: document.getElementById('ast-avail').value,
+    gross_purchase_amount: parseFloat(document.getElementById('ast-val').value)||0,
+    location: document.getElementById('ast-loc').value,
+    custodian: document.getElementById('ast-custodian').value,
+  }, 'ast-success', 'ast-error', 'ast-submit', 'ast-link', 'asset');
+}
+
+// ── 7. Journal Entry ─────────────────────────────────────────
+function initJournal() {
+  _setVal('je-date', today);
+  _fillSelect('je-company', _companies, 'name', 'name', false);
+}
+function submitJournal() {
+  const rows=[...document.querySelectorAll('#je-accounts .fdr-item-row')];
+  const accounts=rows.map(r=>({
+    account: r.querySelector('.je-acc').value.trim(),
+    debit_in_account_currency: parseFloat(r.querySelector('.je-debit').value)||0,
+    credit_in_account_currency: parseFloat(r.querySelector('.je-credit').value)||0,
+  })).filter(a=>a.account);
+  if(accounts.length<2){ alert('Add at least 2 account rows.'); return; }
+  _post('Journal Entry', {
+    doctype:'Journal Entry',
+    voucher_type: document.getElementById('je-type').value,
+    posting_date: document.getElementById('je-date').value,
+    company: document.getElementById('je-company').value,
+    user_remark: document.getElementById('je-remark').value,
+    accounts: accounts,
+  }, 'je-success', 'je-error', 'je-submit', 'je-link', 'journal-entry');
+}
+
+// ── 8. Project ───────────────────────────────────────────────
+function initProject() {
+  _setVal('proj-start', today);
+  _fillSelect('proj-company', _companies, 'name', 'name', false);
+  _fillSelect('proj-customer', [{name:''},..._customers], 'name', 'name', true);
+  _fillSelect('proj-dept', _departments, 'name', 'name', true);
+}
+function submitProject() {
+  const n=document.getElementById('proj-name').value.trim();
+  if(!n){ alert('Project name is required.'); return; }
+  _post('Project', {
+    doctype:'Project', project_name:n,
+    status: document.getElementById('proj-status').value,
+    priority: document.getElementById('proj-priority').value,
+    expected_start_date: document.getElementById('proj-start').value,
+    expected_end_date: document.getElementById('proj-end').value,
+    company: document.getElementById('proj-company').value,
+    customer: document.getElementById('proj-customer').value,
+    department: document.getElementById('proj-dept').value,
+    notes: document.getElementById('proj-desc').value,
+  }, 'proj-success', 'proj-error', 'proj-submit', 'proj-link', 'project');
+}
+
+// ── 9. Task ──────────────────────────────────────────────────
+function initTask() {
+  _fillSelect('task-project', [{name:''},..._projects_list], 'name', 'project_name', true);
+}
+function submitTask() {
+  const s=document.getElementById('task-subject').value.trim();
+  if(!s){ alert('Task subject is required.'); return; }
+  const doc={doctype:'Task', subject:s,
+    project: document.getElementById('task-project').value,
+    status: document.getElementById('task-status').value,
+    priority: document.getElementById('task-priority').value,
+    exp_end_date: document.getElementById('task-end').value,
+    description: document.getElementById('task-desc').value,
+  };
+  const assigned=document.getElementById('task-assigned').value.trim();
+  if(assigned) doc.assigned_to=[{assign_to:assigned}];
+  _post('Task', doc, 'task-success', 'task-error', 'task-submit', 'task-link', 'task');
+}
+
+{% endif %}
+</script>
+{% endblock %}

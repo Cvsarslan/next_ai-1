@@ -1,0 +1,212 @@
+{% extends "templates/web.html" %}
+{% block title %}About Us — Apex Ledger & Audit{% endblock %}
+
+{% block head_include %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<style>
+:root{--navy:#0B1F4B;--gold:#C9A84C;--gold2:#e8c56a;--light:#F4F7FC;--dark:#08152e;--text:#1a2340;--muted:#6b7a99;--white:#ffffff;}
+*{box-sizing:border-box;}body{font-family:'Inter',sans-serif;color:var(--text);margin:0;}
+h1,h2,h3,h4{font-family:'Playfair Display',serif;}
+.page-hero{background:linear-gradient(135deg,var(--dark),var(--navy));padding:120px 0 80px;text-align:center;}
+.page-hero h1{color:var(--white);font-size:clamp(2.5rem,4vw,3.5rem);}
+.page-hero h1 span{color:var(--gold);}
+.page-hero p{color:rgba(255,255,255,.65);font-size:1.1rem;max-width:580px;margin:16px auto 0;}
+.breadcrumb-nav{color:rgba(255,255,255,.4);font-size:.85rem;margin-bottom:20px;}
+.breadcrumb-nav a{color:var(--gold);text-decoration:none;}
+section{padding:88px 0;}
+.section-label{display:inline-block;color:var(--gold);font-size:.78rem;letter-spacing:2px;text-transform:uppercase;font-weight:600;margin-bottom:12px;}
+.section-title{font-size:clamp(1.8rem,3vw,2.6rem);margin-bottom:16px;line-height:1.25;}
+.divider{width:60px;height:3px;background:var(--gold);border-radius:2px;margin:20px 0;}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);font-weight:700;border:none;padding:12px 28px;border-radius:8px;font-size:.95rem;text-decoration:none;display:inline-block;transition:.3s;}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(201,168,76,.4);color:var(--dark);}
+
+/* Story */
+.story-grid{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center;}
+.story-visual{background:linear-gradient(135deg,var(--dark),var(--navy));border-radius:28px;padding:48px;text-align:center;position:relative;overflow:hidden;}
+.story-visual::before{content:'';position:absolute;bottom:-60px;right:-60px;width:200px;height:200px;background:var(--gold);border-radius:50%;opacity:.08;}
+.year-badge{display:inline-block;background:var(--gold);color:var(--dark);font-family:'Playfair Display',serif;font-size:3.5rem;font-weight:800;padding:16px 32px;border-radius:16px;margin-bottom:20px;}
+.story-visual p{color:rgba(255,255,255,.6);font-size:.95rem;line-height:1.7;}
+
+/* Values */
+.values-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:48px;}
+.val-card{background:var(--white);border:1px solid #e8edf5;border-radius:20px;padding:36px;text-align:center;transition:.3s;}
+.val-card:hover{transform:translateY(-6px);box-shadow:0 16px 40px rgba(11,31,75,.1);}
+.val-icon{width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,var(--navy),#163374);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;}
+.val-icon i{font-size:1.6rem;color:var(--gold);}
+.val-card h4{font-size:1.15rem;margin-bottom:10px;}
+.val-card p{color:var(--muted);font-size:.9rem;line-height:1.65;}
+
+/* Team */
+.team-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:48px;}
+.team-card{text-align:center;}
+.team-avatar{width:110px;height:110px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;color:var(--white);border:4px solid var(--gold);}
+.team-card h5{font-size:1.05rem;margin-bottom:4px;}
+.team-card .role{color:var(--gold);font-size:.82rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
+.team-card .bio{color:var(--muted);font-size:.85rem;line-height:1.55;margin-top:8px;}
+
+/* Timeline */
+.timeline{position:relative;padding-left:40px;margin-top:48px;}
+.timeline::before{content:'';position:absolute;left:14px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--gold),rgba(201,168,76,.1));}
+.tl-item{position:relative;padding-bottom:40px;}
+.tl-item::before{content:'';position:absolute;left:-32px;top:6px;width:14px;height:14px;border-radius:50%;background:var(--gold);border:3px solid var(--white);box-shadow:0 0 0 3px var(--gold);}
+.tl-year{color:var(--gold);font-size:.82rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
+.tl-item h5{font-family:'Playfair Display',serif;font-size:1.1rem;margin-bottom:6px;}
+.tl-item p{color:var(--muted);font-size:.9rem;line-height:1.6;margin:0;}
+
+@media(max-width:992px){
+  .story-grid,.values-grid{grid-template-columns:1fr;}
+  .team-grid{grid-template-columns:repeat(2,1fr);}
+}
+@media(max-width:576px){.team-grid{grid-template-columns:1fr;}}
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="page-hero">
+  <div class="container">
+    <div class="breadcrumb-nav"><a href="/firm">Home</a> / About</div>
+    <h1>About <span>Apex Ledger</span></h1>
+    <p>25 years of trusted financial expertise — built on integrity, precision, and client success.</p>
+  </div>
+</div>
+
+<!-- Story -->
+<section style="background:var(--white);">
+  <div class="container">
+    <div class="story-grid">
+      <div data-aos="fade-right">
+        <span class="section-label">Our Story</span>
+        <h2 class="section-title">From a Single Office to a <span style="color:var(--gold)">Regional Leader</span></h2>
+        <div class="divider"></div>
+        <p style="color:var(--muted);line-height:1.8;margin-bottom:20px;">
+          Founded in 1999 in Dubai, Apex Ledger & Audit began as a boutique accounting practice with
+          a single partner and a commitment to delivering honest, meticulous financial services.
+          Over two and a half decades, we have grown into a full-service CPA firm with offices across
+          the UAE, serving over 500 clients from SMEs to publicly listed corporations.
+        </p>
+        <p style="color:var(--muted);line-height:1.8;margin-bottom:32px;">
+          Our growth has always been driven by one thing: the unwavering trust of our clients.
+          We believe that great accounting is not just about numbers — it is about understanding
+          the unique story behind every business and helping it write a better future.
+        </p>
+        <a href="/firm-contact" class="btn-gold">Work With Us <i class="fa-solid fa-arrow-right ms-2"></i></a>
+      </div>
+      <div data-aos="fade-left">
+        <div class="story-visual">
+          <div class="year-badge">1999</div>
+          <p>Year of foundation — Dubai, UAE<br><br>
+          Starting with just 3 professionals and a passion for numbers, we set out to redefine what an accounting firm could be: transparent, proactive, and genuinely invested in client outcomes.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px;">
+            <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--gold);font-weight:700;">3</div>
+              <div style="color:rgba(255,255,255,.5);font-size:.8rem;">Founding Partners</div>
+            </div>
+            <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--gold);font-weight:700;">4</div>
+              <div style="color:rgba(255,255,255,.5);font-size:.8rem;">UAE Offices Today</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Values -->
+<section style="background:var(--light);">
+  <div class="container">
+    <div class="text-center" data-aos="fade-up">
+      <span class="section-label">What Drives Us</span>
+      <h2 class="section-title">Our Core <span style="color:var(--gold)">Values</span></h2>
+    </div>
+    <div class="values-grid">
+      {% for icon, title, desc in [
+        ("fa-shield-halved","Integrity","We hold ourselves to the highest ethical standards. Our clients trust us with their most sensitive financial information — and we never take that lightly."),
+        ("fa-magnifying-glass","Precision","Accuracy is non-negotiable. Every figure, every filing, every report is reviewed with meticulous attention to detail."),
+        ("fa-lightbulb","Innovation","We continuously adopt the latest technology and best practices to deliver smarter, faster, and more insightful financial services."),
+        ("fa-handshake","Partnership","We are not just your accountants — we are your long-term financial partners, invested in your success as if it were our own."),
+        ("fa-clock","Reliability","Deadlines are sacred to us. On-time delivery and proactive communication are at the core of every engagement."),
+        ("fa-globe","Global Perspective","With deep local UAE expertise and an international outlook, we navigate cross-border complexity with ease."),
+      ] %}
+      <div class="val-card" data-aos="fade-up" data-aos-delay="{{ loop.index * 80 }}">
+        <div class="val-icon"><i class="fa-solid {{ icon }}"></i></div>
+        <h4>{{ title }}</h4>
+        <p>{{ desc }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Team -->
+<section style="background:var(--white);">
+  <div class="container">
+    <div class="text-center" data-aos="fade-up">
+      <span class="section-label">Our Leadership</span>
+      <h2 class="section-title">Meet the <span style="color:var(--gold)">Team</span></h2>
+      <p style="color:var(--muted);max-width:520px;margin:12px auto 0;">Seasoned professionals with decades of combined experience in audit, tax, and advisory.</p>
+    </div>
+    <div class="team-grid">
+      {% for init, name, role, bio, color in [
+        ("KA","Khalid Al-Amin","Managing Partner","ICAEW Fellow with 28 years in audit and corporate finance. Former Big 4 partner.","#0B1F4B"),
+        ("SN","Sara Nasser","Senior Partner – Tax","Licensed FTA Tax Agent with 18 years in VAT, corporate tax, and transfer pricing.","#7b2d8b"),
+        ("MC","Michael Chen","Partner – Advisory","MBA (INSEAD), 15 years in financial modelling, M&A due diligence, and CFO advisory.","#1d7a4f"),
+        ("FA","Fatima Al-Rashidi","Director – Bookkeeping","CPA with 12 years building efficient bookkeeping systems for SMEs across the GCC.","#b8460b"),
+      ] %}
+      <div class="team-card" data-aos="fade-up" data-aos-delay="{{ loop.index * 100 }}">
+        <div class="team-avatar" style="background:{{ color }}">{{ init }}</div>
+        <h5>{{ name }}</h5>
+        <div class="role">{{ role }}</div>
+        <div class="bio">{{ bio }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Timeline -->
+<section style="background:var(--light);">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-6" data-aos="fade-right">
+        <span class="section-label">Our Journey</span>
+        <h2 class="section-title">25 Years of <span style="color:var(--gold)">Milestones</span></h2>
+        <div class="divider"></div>
+        <div class="timeline">
+          {% for year, title, desc in [
+            ("1999","Founded in Dubai","Started as a 3-person practice in Deira, Dubai, with a focus on SME bookkeeping."),
+            ("2004","Audit License Granted","Obtained statutory audit license; expanded team to 15 professionals."),
+            ("2010","Abu Dhabi Office Opens","Launched second office to serve federal government and energy sector clients."),
+            ("2016","FTA Tax Agency Registration","Among the first 50 firms registered as UAE FTA Tax Agents post-VAT introduction."),
+            ("2020","Digital Transformation","Migrated all client engagements to cloud-based ERP and launched the client portal."),
+            ("2024","500+ Active Clients","Crossed the milestone of 500 active clients across 12 industry sectors."),
+          ] %}
+          <div class="tl-item" data-aos="fade-left" data-aos-delay="{{ loop.index * 80 }}">
+            <div class="tl-year">{{ year }}</div>
+            <h5>{{ title }}</h5>
+            <p>{{ desc }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-lg-6" data-aos="fade-left" style="display:flex;align-items:center;justify-content:center;padding:48px;">
+        <div style="background:linear-gradient(135deg,var(--dark),var(--navy));border-radius:28px;padding:48px;width:100%;text-align:center;">
+          <i class="fa-solid fa-trophy" style="font-size:4rem;color:var(--gold);margin-bottom:24px;display:block;"></i>
+          <h3 style="color:var(--white);margin-bottom:8px;">Award Winning Firm</h3>
+          <p style="color:rgba(255,255,255,.55);font-size:.9rem;line-height:1.7;">
+            Ranked in the Top 10 Accounting Firms in UAE by Finance Middle East (2022, 2023, 2024).<br><br>
+            "Best Audit Firm — SME Category" at the Arabian Business Awards 2023.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<script>AOS.init({duration:700,once:true,offset:60});</script>
+{% endblock %}

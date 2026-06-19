@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:HR-LOAN-{YYYY}-{#####}",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee", "employee_name", "company", "requested_on",
+  "loan_details_section", "loan_type", "requested_amount", "repayment_months", "monthly_repayment",
+  "purpose_section", "purpose", "status", "decision_notes"
+ ],
+ "fields": [
+  {"fieldname":"employee","fieldtype":"Link","in_list_view":1,"label":"Employee","options":"Employee","reqd":1},
+  {"fetch_from":"employee.employee_name","fieldname":"employee_name","fieldtype":"Data","in_list_view":1,"label":"Employee Name","read_only":1},
+  {"fetch_from":"employee.company","fieldname":"company","fieldtype":"Link","label":"Company","options":"Company","read_only":1,"reqd":1},
+  {"default":"Today","fieldname":"requested_on","fieldtype":"Date","in_list_view":1,"label":"Requested On","reqd":1},
+  {"fieldname":"loan_details_section","fieldtype":"Section Break","label":"Loan Details"},
+  {"fieldname":"loan_type","fieldtype":"Select","in_list_view":1,"label":"Loan Type","options":"Salary Advance\nPersonal Loan\nEmergency Loan\nEducation Loan\nHousing Loan\nVehicle Loan\nOther","reqd":1},
+  {"fieldname":"requested_amount","fieldtype":"Currency","in_list_view":1,"label":"Requested Amount","options":"Company:default_currency","reqd":1},
+  {"fieldname":"repayment_months","fieldtype":"Int","label":"Repayment Months","reqd":1},
+  {"fieldname":"monthly_repayment","fieldtype":"Currency","label":"Estimated Monthly Repayment","options":"Company:default_currency","read_only":1},
+  {"fieldname":"purpose_section","fieldtype":"Section Break","label":"Purpose and Decision"},
+  {"fieldname":"purpose","fieldtype":"Small Text","label":"Purpose","reqd":1},
+  {"default":"Pending Approval","fieldname":"status","fieldtype":"Select","in_list_view":1,"label":"Status","options":"Pending Approval\nApproved\nRejected\nCancelled","reqd":1},
+  {"fieldname":"decision_notes","fieldtype":"Small Text","label":"Decision Notes"}
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "module": "Next AI",
+ "name": "Employee Loan Application",
+ "naming_rule": "Expression",
+ "permissions": [
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1},
+  {"create":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"HR Manager","share":1,"write":1},
+  {"create":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"HR User","write":1}
+ ],
+ "sort_field": "requested_on",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

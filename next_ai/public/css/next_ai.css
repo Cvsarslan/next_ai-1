@@ -1,0 +1,222 @@
+/* ─── WhatsApp Floating Chat Button ─────────────────────────────────────── */
+
+.wa-fab {
+    position: fixed;
+    bottom: 28px;
+    left: 28px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.wa-fab-btn {
+    width: 58px;
+    height: 58px;
+    background: #25D366;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 2px 4px 16px rgba(0,0,0,0.28);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: none;
+    outline: none;
+    text-decoration: none;
+}
+
+.wa-fab-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 3px 6px 22px rgba(0,0,0,0.34);
+}
+
+.wa-fab-btn svg {
+    width: 32px;
+    height: 32px;
+    fill: #fff;
+}
+
+/* Tooltip label */
+.wa-fab-label {
+    background: #fff;
+    color: #128C7E;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.wa-fab:hover .wa-fab-label {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Chat popup card */
+.wa-popup {
+    position: fixed;
+    bottom: 100px;
+    left: 28px;
+    width: 300px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    z-index: 99998;
+    overflow: hidden;
+    display: none;
+    flex-direction: column;
+    animation: wa-popup-in 0.25s ease;
+}
+
+.wa-popup.wa-open {
+    display: flex;
+}
+
+@keyframes wa-popup-in {
+    from { opacity: 0; transform: translateY(16px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.wa-popup-header {
+    background: #075E54;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wa-popup-header-icon {
+    width: 42px;
+    height: 42px;
+    background: #25D366;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wa-popup-header-icon svg {
+    width: 24px;
+    height: 24px;
+    fill: #fff;
+}
+
+.wa-popup-header-text h4 {
+    color: #fff;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.wa-popup-header-text p {
+    color: #a8d5af;
+    margin: 2px 0 0;
+    font-size: 12px;
+}
+
+.wa-popup-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #a8d5af;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 0 0 8px;
+}
+
+.wa-popup-body {
+    background: #ECE5DD;
+    padding: 20px 16px;
+    min-height: 90px;
+    display: flex;
+    align-items: flex-start;
+}
+
+.wa-popup-bubble {
+    background: #fff;
+    border-radius: 0 10px 10px 10px;
+    padding: 10px 14px;
+    max-width: 90%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    font-size: 13.5px;
+    color: #303030;
+    line-height: 1.5;
+    position: relative;
+}
+
+.wa-popup-bubble::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -8px;
+    width: 0; height: 0;
+    border-top: 8px solid #fff;
+    border-left: 8px solid transparent;
+}
+
+/* tooltip label aligns left */
+.wa-fab-label {
+    align-self: flex-start;
+}
+
+.wa-popup-footer {
+    padding: 14px 16px;
+    display: flex;
+    gap: 8px;
+}
+
+.wa-popup-start-btn {
+    flex: 1;
+    background: #25D366;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+
+.wa-popup-start-btn:hover {
+    background: #1ebe5d;
+    color: #fff;
+    text-decoration: none;
+}
+
+.wa-popup-start-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: #fff;
+}
+
+/* Pulse ring on the FAB button */
+.wa-fab-btn::after {
+    content: '';
+    position: absolute;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: #25D366;
+    opacity: 0.4;
+    animation: wa-pulse 2s ease-out infinite;
+}
+
+@keyframes wa-pulse {
+    0%   { transform: scale(1);   opacity: 0.4; }
+    70%  { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1.5); opacity: 0; }
+}

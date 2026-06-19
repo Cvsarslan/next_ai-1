@@ -1,12 +1,15 @@
 import os
+import json
 import frappe
 import time
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from google.api_core.exceptions import ResourceExhausted, NotFound
 from frappe import _
-from next_ai.ai.prompt import PROMPTS
+from next_ai.ai.prompt import PROMPTS, CHAT_SYSTEM_PROMPT
 from next_ai.ai.structured_output import NEXTAIBaseModel
 from next_ai.ai.utils import nextai_usage_log_create
+from next_ai.ai.actions import TOOLS, run_action
 
 
 @frappe.whitelist(allow_guest=True)
@@ -41,6 +44,119 @@ def get_ai_response(**kwargs):
     nextai_llm = NextAILLM(template=PROMPTS[kwargs['type']], user_input=kwargs['value'], field_info=kwargs)
     message = nextai_llm.get_llm_response()
     return {"status_code":200, "status": "sucess", "message": message}
+
+
+# CHAT_SYSTEM_PROMPT already contains all tool instructions
+
+
+@frappe.whitelist(methods=["POST"])
+def execute_action(tool_name: str, args: str = "{}"):
+    """Direct action call for structured form submissions — no AI layer, no quota used."""
+    try:
+        args_dict = json.loads(args) if isinstance(args, str) else (args or {})
+    except Exception:
+        args_dict = {}
+    return run_action(tool_name, args_dict)
+
+
+@frappe.whitelist(methods=["POST"])
+def chat_with_nextai(message: str, history: str = "[]"):
+    """
+    Chat endpoint with ERPNext action capabilities.
+    Returns {status, message, action} where action is populated when a tool was executed.
+    """
+    if not message or not message.strip():
+        frappe.throw(_("Message cannot be empty."))
+
+    nextai_settings = frappe.get_doc("NextAI Settings")
+
+    if not nextai_settings.api_key:
+        frappe.throw(_("NextAI is not configured. Please contact the administrator."))
+
+    api_key = nextai_settings.get_password("api_key")
+    model_name = nextai_settings.model_name
+
+    try:
+        history_list = json.loads(history) if isinstance(history, str) else history
+    except (ValueError, TypeError):
+        history_list = []
+
+    os.environ["GOOGLE_API_KEY"] = api_key
+
+    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
+    llm_with_tools = llm.bind_tools(TOOLS)
+
+    lc_messages = [SystemMessage(content=CHAT_SYSTEM_PROMPT)]
+    for turn in history_list:
+        role = turn.get("role", "")
+        content = turn.get("content", "")
+        if role == "user":
+            lc_messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            lc_messages.append(AIMessage(content=content))
+    lc_messages.append(HumanMessage(content=message))
+
+    try:
+        response = llm_with_tools.invoke(lc_messages)
+
+        action_result = None
+
+        # Check if the model wants to call a tool
+        tool_calls = getattr(response, "tool_calls", None)
+        if tool_calls:
+            tool_call = tool_calls[0]
+            tool_name = tool_call.get("name") or tool_call.get("function", {}).get("name")
+            raw_args  = tool_call.get("args") or tool_call.get("function", {}).get("arguments", {})
+
+            if isinstance(raw_args, str):
+                try:
+                    raw_args = json.loads(raw_args)
+                except Exception:
+                    raw_args = {}
+
+            action_result = run_action(tool_name, raw_args)
+
+            # Build reply from action result directly — no second API call needed
+            if action_result.get("success"):
+                reply = action_result.get("summary", f"{tool_name} completed successfully.")
+            else:
+                reply = f"Sorry, I couldn't complete that action: {action_result.get('error', 'Unknown error')}"
+        else:
+            reply = response.content
+
+        frappe.enqueue(
+            nextai_usage_log_create_internal,
+            queue="short",
+            platform=nextai_settings.platform,
+            user=frappe.session.user,
+            model_name=model_name,
+            sub_type="Chat",
+            question=message,
+            prompt=CHAT_SYSTEM_PROMPT,
+            response=reply,
+            ref_doctype="",
+            field_name="chat",
+        )
+
+        return {"status": "success", "message": reply, "action": action_result}
+
+    except ResourceExhausted as e:
+        frappe.log_error(frappe.get_traceback(), "NextAI Chat Error")
+        # Extract retry delay from error message if available
+        import re
+        retry_match = re.search(r"retry in (\d+)", str(e))
+        retry_hint = f" Please retry in {retry_match.group(1)} seconds." if retry_match else " Please wait a moment and try again."
+        frappe.throw(_(
+            "Gemini API rate limit reached for model <b>{0}</b> (free tier: 20 requests/day)."
+            "{1} To increase the limit, upgrade your Google AI plan or switch to a paid model in "
+            "<b>NextAI Settings</b>."
+        ).format(model_name, retry_hint))
+    except NotFound as e:
+        frappe.log_error(frappe.get_traceback(), "NextAI Chat Error")
+        frappe.throw(_("The configured model <b>{0}</b> was not found. Please update the model name in <b>NextAI Settings</b>.").format(model_name))
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "NextAI Chat Critical Error")
+        frappe.throw(_("An error occurred: {0}").format(str(e)))
 
 
 def get_delay_info(model_info, is_subscription, is_free):

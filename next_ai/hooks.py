@@ -18,6 +18,18 @@ fixtures = [
         "filters": [
             ["name", "in", ["NextAI Header", "NextAI Header 2"]]
         ]
+    },
+    {
+        "dt": "Workspace",
+        "filters": [
+            ["name", "in", ["Founder Dashboard"]]
+        ]
+    },
+    {
+        "dt": "Web Form",
+        "filters": [
+            ["name", "in", ["Client Sales Invoice", "Client Purchase Invoice"]]
+        ]
     }
 ]
 
@@ -25,8 +37,19 @@ fixtures = [
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/next_ai/css/next_ai.css"
-app_include_js = "/assets/next_ai/js/next_ai.js"
+app_include_css = "/assets/next_ai/css/next_ai.css"
+app_include_js = [
+    "/assets/next_ai/js/next_ai.js",
+    "/assets/next_ai/js/whatsapp_chat.js",
+]
+
+boot_session = "next_ai.boot.boot_session"
+
+# Install/refresh UAE-compliant print formats after every migrate.
+after_migrate = [
+    "next_ai.uae_print_formats.install_uae_print_formats",
+    "next_ai.kgc_pricing.install_kgc_pricing",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/next_ai/css/next_ai.css"

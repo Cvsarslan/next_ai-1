@@ -1,0 +1,26 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:memory_key",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["memory_key", "user", "company", "memory_notes", "chat_history", "agent_history", "last_interaction"],
+ "fields": [
+  {"fieldname":"memory_key","fieldtype":"Data","hidden":1,"label":"Memory Key","read_only":1,"unique":1},
+  {"fieldname":"user","fieldtype":"Link","in_list_view":1,"label":"User","options":"User","read_only":1,"reqd":1},
+  {"fieldname":"company","fieldtype":"Link","in_list_view":1,"label":"Company","options":"Company","read_only":1,"reqd":1},
+  {"fieldname":"memory_notes","fieldtype":"Long Text","label":"Remembered Context","read_only":1},
+  {"fieldname":"chat_history","fieldtype":"Code","label":"Chat History","options":"JSON","read_only":1},
+  {"fieldname":"agent_history","fieldtype":"Code","label":"Agent History","options":"JSON","read_only":1},
+  {"fieldname":"last_interaction","fieldtype":"Datetime","in_list_view":1,"label":"Last Interaction","read_only":1}
+ ],
+ "index_web_pages_for_search": 0,
+ "module": "Next AI",
+ "name": "NextAI Portal Memory",
+ "permissions": [
+  {"delete":1,"export":1,"read":1,"report":1,"role":"System Manager"}
+ ],
+ "sort_field":"last_interaction",
+ "sort_order":"DESC",
+ "track_changes":0
+}

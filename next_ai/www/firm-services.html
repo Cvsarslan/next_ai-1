@@ -1,0 +1,173 @@
+{% extends "templates/web.html" %}
+{% block title %}Our Services — Apex Ledger & Audit{% endblock %}
+
+{% block head_include %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<style>
+:root{--navy:#0B1F4B;--gold:#C9A84C;--gold2:#e8c56a;--light:#F4F7FC;--dark:#08152e;--text:#1a2340;--muted:#6b7a99;--white:#ffffff;}
+*{box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;color:var(--text);margin:0;}
+h1,h2,h3,h4{font-family:'Playfair Display',serif;}
+.page-hero{background:linear-gradient(135deg,var(--dark),var(--navy));padding:120px 0 80px;text-align:center;}
+.page-hero h1{color:var(--white);font-size:clamp(2.5rem,4vw,3.5rem);}
+.page-hero h1 span{color:var(--gold);}
+.page-hero p{color:rgba(255,255,255,.65);font-size:1.1rem;max-width:580px;margin:16px auto 0;}
+.breadcrumb-nav{color:rgba(255,255,255,.4);font-size:.85rem;margin-bottom:20px;}
+.breadcrumb-nav a{color:var(--gold);text-decoration:none;}
+
+section{padding:88px 0;}
+.section-label{display:inline-block;color:var(--gold);font-size:.78rem;letter-spacing:2px;text-transform:uppercase;font-weight:600;margin-bottom:12px;}
+.section-title{font-size:clamp(1.8rem,3vw,2.6rem);margin-bottom:16px;line-height:1.25;}
+.divider{width:60px;height:3px;background:var(--gold);border-radius:2px;margin:20px 0;}
+
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--dark);font-weight:700;border:none;padding:12px 28px;border-radius:8px;font-size:.95rem;text-decoration:none;display:inline-block;transition:.3s;}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(201,168,76,.4);color:var(--dark);}
+.btn-navy{background:var(--navy);color:var(--white);font-weight:600;border:none;padding:12px 28px;border-radius:8px;font-size:.95rem;text-decoration:none;display:inline-block;transition:.3s;}
+.btn-navy:hover{background:var(--dark);color:var(--white);}
+
+/* Service detail cards */
+.svc-detail{border:1px solid #e8edf5;border-radius:24px;padding:48px;margin-bottom:32px;background:var(--white);transition:.3s;}
+.svc-detail:hover{box-shadow:0 16px 48px rgba(11,31,75,.1);border-color:rgba(201,168,76,.2);}
+.svc-icon-lg{width:72px;height:72px;border-radius:18px;background:linear-gradient(135deg,var(--navy),#163374);display:flex;align-items:center;justify-content:center;margin-bottom:24px;}
+.svc-icon-lg i{font-size:1.8rem;color:var(--gold);}
+.svc-detail h3{font-size:1.6rem;margin-bottom:14px;}
+.svc-detail p{color:var(--muted);line-height:1.75;margin-bottom:0;}
+.feat-list{list-style:none;padding:0;margin:20px 0 0;}
+.feat-list li{display:flex;align-items:flex-start;gap:10px;color:var(--muted);font-size:.92rem;padding:8px 0;border-bottom:1px solid var(--light);}
+.feat-list li:last-child{border-bottom:none;}
+.feat-list li i{color:var(--gold);margin-top:3px;flex-shrink:0;}
+
+/* Pricing */
+.pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px;}
+.price-card{border:2px solid #e8edf5;border-radius:24px;padding:40px 36px;text-align:center;transition:.3s;position:relative;}
+.price-card.featured{border-color:var(--gold);background:linear-gradient(135deg,var(--dark),var(--navy));color:var(--white);}
+.price-card.featured h4,.price-card.featured .price-num,.price-card.featured .price-per{color:var(--white);}
+.price-card.featured ul li{color:rgba(255,255,255,.7);}
+.feat-badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--dark);padding:4px 18px;border-radius:20px;font-size:.78rem;font-weight:700;white-space:nowrap;}
+.price-card:not(.featured):hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(11,31,75,.1);}
+.price-tier{color:var(--muted);font-size:.82rem;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;}
+.price-num{font-family:'Playfair Display',serif;font-size:3rem;font-weight:800;color:var(--navy);line-height:1;}
+.price-per{color:var(--muted);font-size:.88rem;}
+.price-divider{height:1px;background:#e8edf5;margin:24px 0;}
+.price-card.featured .price-divider{background:rgba(255,255,255,.15);}
+.price-card ul{list-style:none;padding:0;text-align:left;}
+.price-card ul li{display:flex;align-items:center;gap:10px;padding:8px 0;color:var(--muted);font-size:.9rem;}
+.price-card ul li i{color:var(--gold);}
+
+@media(max-width:992px){.pricing-grid{grid-template-columns:1fr;max-width:440px;margin-inline:auto;}}
+@media(max-width:768px){.svc-detail{padding:28px;}}
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="page-hero">
+  <div class="container">
+    <div class="breadcrumb-nav"><a href="/firm">Home</a> / Services</div>
+    <h1>Our <span>Services</span></h1>
+    <p>Comprehensive financial solutions crafted for growing businesses in the UAE and beyond.</p>
+  </div>
+</div>
+
+<section style="background:var(--white);">
+  <div class="container">
+    {% set services = [
+      ("fa-book-open","Financial Accounting","Accurate, timely, and fully IFRS-compliant financial accounting services.",
+        ["General Ledger management and reconciliation","Monthly/quarterly financial statements","Accounts payable and receivable management","Bank reconciliation and cash flow statements","Fixed asset register maintenance","Month-end and year-end closing"]),
+      ("fa-magnifying-glass-chart","Audit & Assurance","Independent audit services that build trust with stakeholders and regulators.",
+        ["Statutory and external audit","Internal audit and control reviews","Agreed-upon procedures","Due diligence review","IFRS compliance assessment","Audit committee support"]),
+      ("fa-file-invoice-dollar","Tax Planning & Filing","Strategic tax advice and full compliance management across all UAE obligations.",
+        ["UAE VAT registration and filing","Corporate Tax compliance (9%)","Tax health-check and gap analysis","FTA audit support and representation","Tax structuring and planning","Excise and customs duty advisory"]),
+      ("fa-calculator","Bookkeeping Services","Efficient, cloud-based bookkeeping so you focus on running your business.",
+        ["Daily transaction recording","Supplier and customer invoice processing","Petty cash management","Weekly and monthly reconciliations","ERP system integration (ERPNext, QuickBooks, Xero)","Multi-currency bookkeeping"]),
+      ("fa-chart-pie","Business Advisory","Forward-looking advisory to help your business scale with confidence.",
+        ["Financial modelling and forecasting","Business plan preparation","Feasibility studies","KPI dashboards and MIS reporting","Budgeting and variance analysis","CFO-as-a-service"]),
+      ("fa-users","Payroll & HR Finance","End-to-end payroll management ensuring compliance and employee satisfaction.",
+        ["WPS (Wages Protection System) processing","Salary structure design","Gratuity and leave liability calculation","Employee expense management","Payroll reconciliation","HR finance reporting"]),
+    ] %}
+
+    {% for icon, title, intro, features in services %}
+    <div class="svc-detail" data-aos="fade-up">
+      <div class="row align-items-start g-4">
+        <div class="col-lg-5">
+          <div class="svc-icon-lg"><i class="fa-solid {{ icon }}"></i></div>
+          <h3>{{ title }}</h3>
+          <p>{{ intro }}</p>
+          <a href="/firm-contact" class="btn-gold mt-4">Get a Quote <i class="fa-solid fa-arrow-right ms-2"></i></a>
+        </div>
+        <div class="col-lg-7">
+          <ul class="feat-list">
+            {% for f in features %}
+            <li><i class="fa-solid fa-check-circle"></i> {{ f }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Pricing -->
+<section style="background:var(--light);">
+  <div class="container">
+    <div class="text-center" data-aos="fade-up">
+      <span class="section-label">Transparent Pricing</span>
+      <h2 class="section-title">Simple, <span style="color:var(--gold)">Scalable</span> Plans</h2>
+      <p style="color:var(--muted);max-width:520px;margin:0 auto;">All plans include a dedicated account manager, monthly reports, and client portal access.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="price-card" data-aos="fade-up" data-aos-delay="100">
+        <div class="price-tier">Starter</div>
+        <div class="price-num">AED 1,500</div>
+        <div class="price-per">/ month</div>
+        <div class="price-divider"></div>
+        <ul>
+          <li><i class="fa-solid fa-check"></i> Monthly bookkeeping (up to 150 txns)</li>
+          <li><i class="fa-solid fa-check"></i> Quarterly VAT filing</li>
+          <li><i class="fa-solid fa-check"></i> Monthly P&L and Balance Sheet</li>
+          <li><i class="fa-solid fa-check"></i> Client portal access</li>
+          <li><i class="fa-solid fa-check"></i> Email support</li>
+        </ul>
+        <a href="/firm-contact" class="btn-navy mt-4 w-100 text-center">Get Started</a>
+      </div>
+      <div class="price-card featured" data-aos="fade-up" data-aos-delay="200">
+        <div class="feat-badge">Most Popular</div>
+        <div class="price-tier" style="color:rgba(255,255,255,.5);">Growth</div>
+        <div class="price-num">AED 4,500</div>
+        <div class="price-per">/ month</div>
+        <div class="price-divider"></div>
+        <ul>
+          <li><i class="fa-solid fa-check"></i> Full bookkeeping (unlimited txns)</li>
+          <li><i class="fa-solid fa-check"></i> Monthly VAT filing</li>
+          <li><i class="fa-solid fa-check"></i> Payroll up to 30 employees</li>
+          <li><i class="fa-solid fa-check"></i> Annual audit preparation</li>
+          <li><i class="fa-solid fa-check"></i> MIS dashboards + forecasting</li>
+          <li><i class="fa-solid fa-check"></i> Priority phone support</li>
+        </ul>
+        <a href="/firm-contact" class="btn-gold mt-4 w-100 text-center">Get Started</a>
+      </div>
+      <div class="price-card" data-aos="fade-up" data-aos-delay="300">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-num" style="font-size:2rem;">Custom</div>
+        <div class="price-per">tailored to your needs</div>
+        <div class="price-divider"></div>
+        <ul>
+          <li><i class="fa-solid fa-check"></i> Full-scope accounting and audit</li>
+          <li><i class="fa-solid fa-check"></i> Multi-entity consolidation</li>
+          <li><i class="fa-solid fa-check"></i> CFO-as-a-service</li>
+          <li><i class="fa-solid fa-check"></i> Corporate tax planning</li>
+          <li><i class="fa-solid fa-check"></i> Dedicated senior partner</li>
+          <li><i class="fa-solid fa-check"></i> 24/7 support</li>
+        </ul>
+        <a href="/firm-contact" class="btn-navy mt-4 w-100 text-center">Contact Us</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<script>AOS.init({duration:700,once:true,offset:60});</script>
+{% endblock %}
