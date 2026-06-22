@@ -330,8 +330,216 @@ _SALARY_HTML = (
 # ──────────────────────────────────────────────────────────────────────
 # Registry & installer
 # ──────────────────────────────────────────────────────────────────────
+def _engagement_format():
+    """KGC 4-page Service Proposal for Quotation: cover, required documents,
+    scope & pricing, terms & acceptance. Logo/company details from Company."""
+    import json
+    from next_ai.kgc_pricing import (ENGAGEMENT, PROPOSAL_PILLARS, PROPOSAL_FEATURES,
+                                     PROPOSAL_ABOUT, PROPOSAL_TAGLINE, ONBOARDING_STEPS,
+                                     STANDARD_TERMS)
+    groups_json = json.dumps([{ "label": g["label"], "exact": g["exact"], "prefix": g["prefix"],
+                                "documents": g["documents"], "terms": g["terms"],
+                                "doc_table": g.get("doc_table") } for g in ENGAGEMENT])
+    pillars_json = json.dumps(PROPOSAL_PILLARS)
+    features_json = json.dumps(PROPOSAL_FEATURES)
+    steps_json = json.dumps(ONBOARDING_STEPS)
+    terms_json = json.dumps(STANDARD_TERMS)
+
+    css = """
+<style>
+  .kgc { font-family:"Inter","Helvetica Neue",Arial,sans-serif; color:#1f2933; font-size:11px; }
+  .kgc * { box-sizing:border-box; }
+  .kgc-page { page-break-after:always; padding-bottom:30px; }
+  .kgc-page:last-child { page-break-after:auto; }
+  .kgc-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
+  .kgc-top .lhs img { max-height:60px; max-width:180px; object-fit:contain; }
+  .kgc-top .lhs .co { font-size:16px; font-weight:800; color:#b8945f; }
+  .kgc-top .lhs .addr { font-size:9px; color:#6b7280; line-height:1.5; margin-top:4px; }
+  .kgc-band { background:#1f2430; border-bottom:4px solid #b8945f; border-radius:4px; padding:12px 18px; text-align:right; min-width:300px; }
+  .kgc-band h1 { margin:0; font-size:20px; font-weight:800; color:#fff; letter-spacing:1px; }
+  .kgc-band .sub { font-size:9.5px; color:#cbb389; margin-top:2px; }
+  .kgc-rule { height:3px; background:linear-gradient(90deg,#b8945f,#1f2430); border-radius:2px; margin:0 0 16px; }
+  .kgc-foot { border-top:1px solid #e5e7eb; margin-top:22px; padding-top:6px; display:flex; justify-content:space-between; font-size:8.5px; color:#6b7280; }
+  .kgc-foot .bar { height:6px; background:#1f2430; border-bottom:3px solid #b8945f; margin-top:5px; }
+  .kgc-secttl { font-size:13px; font-weight:800; color:#1f2430; margin:6px 0 12px; }
+  .kgc-cards { display:flex; gap:10px; margin:10px 0 18px; }
+  .kgc-card { flex:1; border:1px solid #ececec; border-radius:6px; padding:12px; }
+  .kgc-card .num { display:inline-block; background:#1f2430; color:#fff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:4px; margin-bottom:7px; }
+  .kgc-card .t { font-weight:800; font-size:11px; margin-bottom:4px; }
+  .kgc-card .d { font-size:9.5px; color:#5b6470; line-height:1.5; }
+  .kgc-info { border:1px solid #ececec; border-left:4px solid #b8945f; border-radius:6px; padding:14px 16px; margin-bottom:16px; }
+  .kgc-info table { width:100%; border-collapse:collapse; }
+  .kgc-info td { padding:6px 4px; font-size:10.5px; }
+  .kgc-info td.k { color:#6b7280; width:120px; }
+  .kgc-info td.v { font-weight:700; }
+  .kgc-h { background:#1f2430; color:#fff; font-weight:800; font-size:11px; padding:9px 14px; border-radius:5px 5px 0 0; }
+  table.kgc-tbl { width:100%; border-collapse:collapse; margin-bottom:6px; }
+  table.kgc-tbl th { background:#1f2430; color:#fff; font-size:9.5px; text-align:left; padding:8px 10px; text-transform:uppercase; letter-spacing:.4px; }
+  table.kgc-tbl td { padding:8px 10px; border-bottom:1px solid #eef0f2; font-size:10px; vertical-align:top; color:#374151; }
+  table.kgc-tbl td.num, table.kgc-tbl th.num { text-align:right; }
+  table.kgc-tbl tr:nth-child(even) td { background:#fafafa; }
+  table.kgc-docs { page-break-inside:avoid; margin-bottom:12px; }
+  table.kgc-docs td.kgc-doc-cat { width:200px; font-weight:800; color:#1f2430; background:#f5f2ec; border-right:1px solid #e7e0d5; vertical-align:top; padding-top:11px; }
+  .kgc-doc-num { display:inline-block; min-width:18px; height:18px; line-height:18px; margin-right:7px; border-radius:50%; background:#f1e8d9; color:#8b6b3f; text-align:center; font-size:8.5px; font-weight:800; }
+  .kgc-tot { width:300px; margin-left:auto; }
+  .kgc-tot td { padding:5px 8px; font-size:10.5px; }
+  .kgc-tot td.v { text-align:right; font-weight:800; }
+  .kgc-tot tr.g td { border-top:2px solid #b8945f; color:#1f2430; font-size:12.5px; }
+  .kgc-note { border:1px solid #ececec; border-radius:6px; padding:11px 14px; font-size:9.5px; color:#5b6470; line-height:1.6; margin-bottom:12px; }
+  .kgc-note b { color:#1f2430; }
+  .kgc-two { display:flex; gap:12px; margin-bottom:12px; }
+  .kgc-two > div { flex:1; border:1px solid #ececec; border-radius:6px; padding:11px 14px; font-size:9.5px; color:#5b6470; line-height:1.6; }
+  .kgc-terms td { padding:9px 10px; border-bottom:1px solid #eef0f2; font-size:10px; vertical-align:top; }
+  .kgc-terms .n { width:26px; text-align:center; font-weight:800; color:#b8945f; }
+  .kgc-sign { display:flex; justify-content:space-between; margin-top:36px; }
+  .kgc-sign > div { width:42%; }
+  .kgc-sign .line { border-top:1px solid #9aa3ad; margin-bottom:5px; }
+</style>
+"""
+
+    head = """
+{%- set company = frappe.get_doc("Company", doc.company) -%}
+{%- set caddr = doc.get("company_address_display") or "" -%}
+{%- macro page_head(title, subtitle) -%}
+<div class="kgc-top">
+  <div class="lhs">
+    {% if company.company_logo %}<img src="{{ company.company_logo }}">{% else %}<div class="co">{{ company.company_name }}</div>{% endif %}
+    <div class="addr">{% if caddr %}{{ caddr }}{% elif company.get('country') %}{{ company.country }}{% endif %}{% if company.tax_id %}<br>TRN: {{ company.tax_id }}{% endif %}</div>
+  </div>
+  <div class="kgc-band"><h1>{{ title }}</h1><div class="sub">{{ subtitle }}</div></div>
+</div>
+<div class="kgc-rule"></div>
+{%- endmacro -%}
+{%- macro page_foot(n) -%}
+<div class="kgc-foot"><span>{{ company.company_name }} | """ + PROPOSAL_TAGLINE + """</span><span>Page {{ n }} of 4</span></div>
+<div style="height:6px;background:#1f2430;border-bottom:3px solid #b8945f;margin-top:5px"></div>
+{%- endmacro -%}
+{%- set GROUPS = """ + groups_json + """ -%}
+{%- set ns = namespace(matched=[]) -%}
+{%- for g in GROUPS -%}
+  {%- set hit = namespace(v=false) -%}
+  {%- for it in doc.items -%}
+    {%- if it.item_code in g.exact -%}{%- set hit.v = true -%}{%- endif -%}
+    {%- for p in g.prefix -%}{%- if it.item_code and it.item_code.startswith(p) -%}{%- set hit.v = true -%}{%- endif -%}{%- endfor -%}
+  {%- endfor -%}
+  {%- if hit.v -%}{%- set ns.matched = ns.matched + [g] -%}{%- endif -%}
+{%- endfor -%}
+{%- set eng_label = ns.matched | map(attribute='label') | join(', ') if ns.matched else 'Professional Services' -%}
+{%- set PILLARS = """ + pillars_json + """ -%}
+{%- set FEATURES = """ + features_json + """ -%}
+{%- set STEPS = """ + steps_json + """ -%}
+{%- set TERMS = """ + terms_json + """ -%}
+"""
+
+    page1 = """
+<div class="kgc-page">
+  {{ page_head('SERVICE PROPOSAL', '""" + PROPOSAL_TAGLINE + """') }}
+  <div style="border:1px solid #ececec;border-radius:6px;padding:14px 16px;margin-bottom:6px">
+    <div class="kgc-secttl">PROFESSIONAL ACCOUNTING, TAX &amp; COMPLIANCE SUPPORT</div>
+    <div class="kgc-cards">
+      {% for p in PILLARS %}<div class="kgc-card"><span class="num">{{ p[0] }}</span><div class="t">{{ p[1] }}</div><div class="d">{{ p[2] }}</div></div>{% endfor %}
+    </div>
+  </div>
+  <div class="kgc-info">
+    <table>
+      <tr><td class="k">Prepared For:</td><td class="v">{{ doc.get('customer_name') or doc.get('party_name') }}</td></tr>
+      <tr><td class="k">Proposal Ref:</td><td class="v">{{ doc.name }}</td></tr>
+      <tr><td class="k">Proposal Date:</td><td class="v">{{ frappe.utils.formatdate(doc.transaction_date) }}</td></tr>
+      <tr><td class="k">Valid Till:</td><td class="v">{{ frappe.utils.formatdate(doc.valid_till) }}</td></tr>
+      <tr><td class="k">Prepared By:</td><td class="v">{{ company.company_name }}</td></tr>
+    </table>
+  </div>
+  <div class="kgc-h">ENGAGEMENT</div>
+  <div style="border:1px solid #ececec;border-top:none;border-radius:0 0 5px 5px;padding:11px 14px;font-size:11px;margin-bottom:16px">{{ eng_label }}</div>
+  <div class="kgc-note"><b>About {{ company.company_name }}</b><br>{{ company.company_name }} """ + PROPOSAL_ABOUT + """</div>
+  <div class="kgc-cards">
+    {% for f in FEATURES %}<div class="kgc-card"><div class="t">{{ f[0] }}</div><div class="d">{{ f[1] }}</div></div>{% endfor %}
+  </div>
+  {{ page_foot(1) }}
+</div>
+"""
+
+    page2 = """
+<div class="kgc-page">
+  {{ page_head('REQUIRED DOCUMENTS', 'Client Onboarding & Records Checklist') }}
+  <div class="kgc-h">PROPOSAL INFORMATION</div>
+  <table class="kgc-tbl" style="margin-bottom:14px"><tbody>
+    <tr><td class="k" style="background:#fafafa;font-weight:700;width:120px">Proposal Ref</td><td>{{ doc.name }}</td><td class="k" style="background:#fafafa;font-weight:700;width:120px">Proposal Date</td><td>{{ frappe.utils.formatdate(doc.transaction_date) }}</td></tr>
+    <tr><td style="background:#fafafa;font-weight:700">Client Name</td><td>{{ doc.get('customer_name') or doc.get('party_name') }}</td><td style="background:#fafafa;font-weight:700">Engagement</td><td>{{ eng_label }}</td></tr>
+    <tr><td style="background:#fafafa;font-weight:700">Client Email</td><td>{{ doc.get('contact_email') or '—' }}</td><td style="background:#fafafa;font-weight:700">Client Mobile</td><td>{{ doc.get('contact_mobile') or '—' }}</td></tr>
+  </tbody></table>
+  {% for g in ns.matched %}
+    <div class="kgc-secttl" style="font-size:11.5px">Documents Required for {{ g.label }}</div>
+    <table class="kgc-tbl kgc-docs"><thead><tr><th style="width:200px">Category</th><th>Required Documents / Information</th></tr></thead><tbody>
+    {% if g.doc_table %}{% for row in g.doc_table %}<tr><td style="font-weight:700">{{ row[0] }}</td><td>{{ row[1] }}</td></tr>{% endfor %}
+    {% else %}{% for d in g.documents %}<tr>{% if loop.first %}<td class="kgc-doc-cat" rowspan="{{ g.documents | length }}">{{ g.label }}</td>{% endif %}<td><span class="kgc-doc-num">{{ loop.index }}</span>{{ d }}</td></tr>{% endfor %}{% endif %}
+    </tbody></table>
+  {% endfor %}
+  {% if not ns.matched %}<div class="kgc-note">Document requirements will be confirmed based on the selected services.</div>{% endif %}
+  <div class="kgc-secttl" style="font-size:11.5px;margin-top:14px">Recommended Onboarding Process</div>
+  <div class="kgc-cards">{% for s in STEPS %}<div class="kgc-card"><div class="t">{{ s[0] }}</div><div class="d">{{ s[1] }}</div></div>{% endfor %}</div>
+  <div class="kgc-note"><b>Client Responsibility:</b> The client is responsible for providing complete, accurate and timely information. {{ company.company_name }} shall not be responsible for any delay, penalty, incorrect filing or compliance exposure arising from incomplete, inaccurate or delayed documents provided by the client.</div>
+  {{ page_foot(2) }}
+</div>
+"""
+
+    page3 = """
+<div class="kgc-page">
+  {{ page_head('SCOPE & PRICING', 'Schedule of Charges and Commercial Summary') }}
+  <div class="kgc-h">CLIENT &amp; PROPOSAL SUMMARY</div>
+  <table class="kgc-tbl" style="margin-bottom:14px"><tbody>
+    <tr><td style="background:#fafafa;font-weight:700;width:120px">Client Name</td><td>{{ doc.get('customer_name') or doc.get('party_name') }}</td><td style="background:#fafafa;font-weight:700;width:120px">Proposal Ref</td><td>{{ doc.name }}</td></tr>
+    <tr><td style="background:#fafafa;font-weight:700">Engagement</td><td>{{ eng_label }}</td><td style="background:#fafafa;font-weight:700">Currency</td><td>{{ doc.currency }}</td></tr>
+  </tbody></table>
+  <div class="kgc-secttl" style="font-size:11.5px">Schedule of Charges</div>
+  <table class="kgc-tbl"><thead><tr><th style="width:36px">SR</th><th style="width:190px">Scope</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+    {% for it in doc.items %}<tr>
+      <td>{{ loop.index }}</td>
+      <td style="font-weight:700">{{ it.item_name or it.item_code }}</td>
+      <td>{{ (it.description or it.item_name) | striptags }}</td>
+      <td class="num">{{ frappe.utils.fmt_money(it.amount, currency=doc.currency) }}</td>
+    </tr>{% endfor %}
+  </tbody></table>
+  <div style="display:flex;gap:14px;align-items:flex-start">
+    <div class="kgc-note" style="flex:1"><b>Commercial Note:</b> The above fees are based on the agreed scope and information provided by the client. Any additional work, urgent filing, historical reconciliation, tax advisory, audit support, tax authority response, or out-of-scope compliance assistance may be billed separately subject to prior confirmation.</div>
+    <table class="kgc-tot">
+      <tr><td class="k">Taxable Amount</td><td class="v">{{ frappe.utils.fmt_money(doc.get('net_total') or doc.get('total') or 0, currency=doc.currency) }}</td></tr>
+      <tr><td class="k">VAT Amount</td><td class="v">{{ frappe.utils.fmt_money(doc.get('total_taxes_and_charges') or 0, currency=doc.currency) }}</td></tr>
+      <tr class="g"><td>Total Amount</td><td class="v">{{ frappe.utils.fmt_money(doc.grand_total, currency=doc.currency) }}</td></tr>
+    </table>
+  </div>
+  <div class="kgc-two">
+    <div><b style="color:#1f2430">Included Scope</b><br>The services included are limited to the line items and descriptions mentioned in the Schedule of Charges above.</div>
+    <div><b style="color:#1f2430">Excluded Scope</b><br>Tax advisory, authority response, audit coordination, voluntary disclosure, reconsideration, and historical cleanup are excluded unless specifically mentioned.</div>
+  </div>
+  <div class="kgc-note"><b>Payment Terms:</b> Full payment is required in advance unless otherwise agreed in writing. For recurring services, invoices shall be issued at the beginning of each month or service period. Services may commence only after payment confirmation and receipt of required documents.</div>
+  {{ page_foot(3) }}
+</div>
+"""
+
+    page4 = """
+<div class="kgc-page">
+  {{ page_head('TERMS & ACCEPTANCE', 'Commercial Terms, Scope Conditions and Client Approval') }}
+  <div class="kgc-secttl" style="font-size:11.5px">Terms &amp; Conditions</div>
+  <table class="kgc-tbl kgc-terms"><tbody>
+    {% for t in TERMS %}<tr><td class="n">{{ loop.index }}</td><td><b>{{ t[0] }}:</b> {{ t[1] }}</td></tr>{% endfor %}
+    {% for g in ns.matched %}{% for t in g.terms %}<tr><td class="n">•</td><td><b>{{ g.label }}:</b> {{ t }}</td></tr>{% endfor %}{% endfor %}
+  </tbody></table>
+  <div class="kgc-note"><b>Client Acceptance Statement:</b> We confirm acceptance of the scope of work, pricing, payment terms and conditions stated in this proposal and authorize {{ company.company_name }} to proceed with the agreed services.</div>
+  <div class="kgc-sign">
+    <div><div class="line"></div><b>Prepared / Issued By</b><br>{{ company.company_name }}<br><br>Date: __________________</div>
+    <div><div class="line"></div><b>Client Acceptance / Signature</b><br>Name, Signature &amp; Company Stamp<br><br>Date: __________________</div>
+  </div>
+  {{ page_foot(4) }}
+</div>
+"""
+    return css + '<div class="kgc">' + head + page1 + page2 + page3 + page4 + "</div>"
+
+
 def _formats():
     return [
+        ("NextAI Service Engagement", "Quotation", _engagement_format()),
+        ("NextAI Proforma Invoice", "Sales Invoice", _txn_format("PROFORMA INVOICE", "customer", _SI_META, show_vat=True)),
         ("NextAI Tax Invoice", "Sales Invoice", _txn_format("TAX INVOICE", "customer", _SI_META, show_vat=True)),
         ("NextAI Invoice", "Sales Invoice", _txn_format("INVOICE", "customer", _SI_META, show_vat=True)),
         ("NextAI Purchase Invoice", "Purchase Invoice", _txn_format("PURCHASE TAX INVOICE", "supplier", _PI_META, show_vat=True)),

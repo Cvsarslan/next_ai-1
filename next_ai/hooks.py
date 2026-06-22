@@ -49,6 +49,8 @@ boot_session = "next_ai.boot.boot_session"
 after_migrate = [
     "next_ai.uae_print_formats.install_uae_print_formats",
     "next_ai.kgc_pricing.install_kgc_pricing",
+    "next_ai.customer_tax_setup.install_customer_tax_fields",
+    "next_ai.quotation_signing.install_quotation_signing_fields",
 ]
 
 # include js, css files in header of web template
@@ -66,7 +68,9 @@ after_migrate = [
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Purchase Invoice": "public/js/purchase_invoice_ocr.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -169,11 +173,12 @@ permission_query_conditions = {
 # ---------------
 
 scheduler_events = {
-# 	"all": [
-# 		"next_ai.tasks.all"
-# 	],
+	"all": [
+		"next_ai.payroll_automation.create_month_end_payroll_drafts"
+	],
 	"daily": [
-		"next_ai.ai.scheduler.delete_old_nextai_usage_logs"
+		"next_ai.ai.scheduler.delete_old_nextai_usage_logs",
+		"next_ai.due_date_reminders.send_due_date_reminders"
 	],
 # 	"hourly": [
 # 		"next_ai.tasks.hourly"

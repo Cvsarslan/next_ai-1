@@ -2,6 +2,19 @@ import frappe
 import json
 from frappe.utils import cint, flt, cstr, nowdate, getdate
 from next_ai.ai.uae_tax_knowledge import UAE_TAX_KNOWLEDGE, UAE_TAX_KNOWLEDGE_VERSION
+# Re-exported so the portal can call them at next_ai.api.* (they stay whitelisted).
+from next_ai.ai.vat_advisory import advise_sales_vat, advise_purchase_vat  # noqa: F401
+from next_ai.ai.corporate_tax_advisory import (  # noqa: F401
+    get_corporate_tax_status, advise_purchase_ct,
+)
+from next_ai.crm_outreach import (  # noqa: F401
+    get_outreach_audiences, preview_recipients, send_outreach_email,
+)
+from next_ai.crm_extra import (  # noqa: F401
+    list_contacts, save_contact, list_followups, create_followup, complete_followup,
+    log_activity, get_timeline, list_campaigns, create_campaign, import_leads,
+    preview_whatsapp, send_whatsapp_outreach, get_sales_team,
+)
 
 
 PORTAL_AI_MODEL = "claude-opus-4-8"
@@ -58,6 +71,90 @@ def _gemini_message_text(response):
             for block in content
         )
     return cstr(content)
+
+
+def _ollama_config():
+    settings = frappe.get_single("NextAI Settings")
+    base = (settings.get("ollama_base_url") or "http://localhost:11434").rstrip("/")
+    model = settings.get("ollama_model") or "llama3.1"
+    return base, model
+
+
+def _ollama_tools():
+    """Convert the Anthropic-style _AI_TOOLS to Ollama's function-tool format."""
+    return [{"type": "function",
+             "function": {"name": t["name"], "description": t.get("description", ""),
+                          "parameters": t.get("input_schema", {})}}
+            for t in _AI_TOOLS]
+
+
+def _ollama_chat(messages, system=None, tools=None):
+    """Call a local/remote Ollama server's /api/chat. Returns the message dict
+    {role, content, tool_calls?}. Raises on connection/HTTP errors."""
+    import requests
+    base, model = _ollama_config()
+    msgs = []
+    if system:
+        msgs.append({"role": "system", "content": system})
+    msgs.extend(messages)
+    payload = {"model": model, "messages": msgs, "stream": False}
+    if tools:
+        payload["tools"] = tools
+    try:
+        r = requests.post(f"{base}/api/chat", json=payload, timeout=180)
+        r.raise_for_status()
+    except Exception as e:
+        frappe.throw(f"Could not reach Ollama at {base}. Is the server running and the model pulled? ({e})")
+    return (r.json() or {}).get("message", {}) or {}
+
+
+def _ollama_tool_args(call):
+    args = (call.get("function") or {}).get("arguments") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except Exception:
+            args = {}
+    return args
+
+
+def _ollama_textual_toolcalls(content):
+    """Smaller Ollama models often emit tool calls as raw JSON text in `content`
+    instead of using the structured `tool_calls` field. Parse those out so the
+    agent still works. Returns a list of {function:{name,arguments}} or []."""
+    import re
+    s = (content or "").strip()
+    if not s or "{" not in s:
+        return []
+    s = re.sub(r"^```(?:json)?|```$", "", s).strip()
+    candidates = []
+    try:
+        candidates.append(json.loads(s))
+    except Exception:
+        for m in re.finditer(r"\{(?:[^{}]|\{[^{}]*\})*\}", s):
+            try:
+                candidates.append(json.loads(m.group()))
+            except Exception:
+                continue
+    calls = []
+    for obj in candidates:
+        if not isinstance(obj, dict):
+            continue
+        name = obj.get("name") or (obj.get("function") or {}).get("name")
+        raw = obj.get("parameters")
+        if raw is None:
+            raw = obj.get("arguments")
+        if raw is None and isinstance(obj.get("function"), dict):
+            raw = obj["function"].get("arguments")
+        if not name:
+            continue
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
+        calls.append({"function": {"name": name, "arguments": raw or {}}})
+    return calls
 
 
 def _portal_memory_key(user, company):
@@ -374,8 +471,14 @@ def portal_ai(message, mode="chat", history=None, company=None):
             company = _get_company()
         mode = "agent" if mode == "agent" else "chat"
         memory_doc = _get_portal_memory(company)
+        platform = (frappe.db.get_single_value("NextAI Settings", "platform") or "").strip()
         client = _anthropic_client()
-        provider = "anthropic" if client is not None else "gemini"
+        if platform == "Ollama":
+            provider = "ollama"            # explicit choice wins
+        elif client is not None:
+            provider = "anthropic"
+        else:
+            provider = "gemini"
 
         if isinstance(history, str):
             history = json.loads(history or "[]")
@@ -455,6 +558,36 @@ def portal_ai(message, mode="chat", history=None, company=None):
                 text = "I wasn't able to complete that — please refine the request."
                 return finish({"type": "message", "text": text}, text)
 
+            if provider == "ollama":
+                convo = [{"role": m["role"], "content": m["content"]} for m in messages]
+                for _ in range(8):
+                    msg = _ollama_chat(convo, system=system, tools=_ollama_tools())
+                    tcs = msg.get("tool_calls") or []
+                    if not tcs:
+                        # Fallback: model emitted the tool call as raw JSON text.
+                        tcs = _ollama_textual_toolcalls(msg.get("content"))
+                    if not tcs:
+                        text = msg.get("content") or "Done."
+                        return finish({"type": "message", "text": text}, text)
+                    write_calls = [c for c in tcs if (c.get("function") or {}).get("name") in _AI_WRITE_TOOLS]
+                    if write_calls:
+                        c = write_calls[0]
+                        name = c["function"]["name"]
+                        inp = _ollama_tool_args(c)
+                        summary = _ai_summarize_action(name, inp)
+                        return finish(
+                            {"type": "confirm", "tool": name, "input": inp,
+                             "summary": summary, "text": msg.get("content") or ""},
+                            f"Pending user confirmation: {summary}",
+                        )
+                    convo.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tcs})
+                    for c in tcs:
+                        name = (c.get("function") or {}).get("name")
+                        out = _ai_run_readonly_tool(name, _ollama_tool_args(c), company)
+                        convo.append({"role": "tool", "content": json.dumps(out, default=str)})
+                text = "I wasn't able to complete that — please refine the request."
+                return finish({"type": "message", "text": text}, text)
+
             for _ in range(8):
                 resp = client.messages.create(
                     model=PORTAL_AI_MODEL, max_tokens=1500,
@@ -509,6 +642,11 @@ def portal_ai(message, mode="chat", history=None, company=None):
                 lc_messages.append(cls(content=turn["content"]))
             response = llm.invoke(lc_messages)
             text = _gemini_message_text(response) or "..."
+            return finish({"type": "message", "text": text}, text)
+        if provider == "ollama":
+            convo = [{"role": m["role"], "content": m["content"]} for m in messages]
+            msg = _ollama_chat(convo, system=system)
+            text = msg.get("content") or "…"
             return finish({"type": "message", "text": text}, text)
         resp = client.messages.create(
             model=PORTAL_AI_MODEL, max_tokens=1200, system=system, messages=messages,
@@ -702,6 +840,52 @@ def get_team_users():
 
 
 @frappe.whitelist()
+def get_team_directory():
+    """Team members with roles, contact details, last activity and open task load."""
+    users = frappe.get_all("User",
+        filters={"enabled": 1, "user_type": "System User", "name": ["not in", ["Administrator", "Guest"]]},
+        fields=["name", "full_name", "user_image", "mobile_no", "phone", "last_active",
+                "location"],
+        order_by="full_name asc", limit=500)
+    out = []
+    for u in users:
+        roles = frappe.get_all("Has Role", filters={"parent": u.name, "parenttype": "User"}, pluck="role")
+        roles = [r for r in roles if r not in ("All", "Guest")]
+        open_tasks = frappe.db.count("ToDo", {"allocated_to": u.name, "status": "Open"})
+        out.append({
+            "name": u.name, "full_name": u.full_name or u.name, "user_image": u.user_image,
+            "mobile_no": u.mobile_no or u.phone, "designation": None,
+            "location": u.location, "last_active": u.last_active,
+            "roles": roles[:6], "role_count": len(roles), "open_tasks": open_tasks,
+        })
+    return out
+
+
+@frappe.whitelist()
+def broadcast_to_team(subject, message=None):
+    """Send an in-system notification to every active team member."""
+    if frappe.session.user in ("Guest", None, ""):
+        frappe.throw("You must be signed in.")
+    subject = cstr(subject).strip()
+    if not subject:
+        frappe.throw("Subject is required.")
+    users = frappe.get_all("User", filters={"enabled": 1, "user_type": "System User",
+                           "name": ["not in", ["Administrator", "Guest"]]}, pluck="name")
+    sent = 0
+    for u in users:
+        try:
+            frappe.get_doc({
+                "doctype": "Notification Log", "subject": subject,
+                "email_content": cstr(message or ""), "for_user": u, "type": "Alert",
+                "from_user": frappe.session.user,
+            }).insert(ignore_permissions=True)
+            sent += 1
+        except Exception:
+            pass
+    return {"ok": True, "sent": sent}
+
+
+@frappe.whitelist()
 def get_team_meetings(status=None, upcoming=0):
     conditions = [
         "e.event_category='Meeting'",
@@ -850,6 +1034,73 @@ def send_portal_document_email(doctype, name, recipients, subject, message,
 def _get_company():
     companies = frappe.get_all("Company", pluck="name", limit=1)
     return companies[0] if companies else None
+
+
+@frappe.whitelist()
+def get_top_expense_trends(company=None, limit=5):
+    """Top expense accounts for the current fiscal year with a comparison against
+    the same accounts in the prior fiscal year (amount and % change)."""
+    try:
+        if not company:
+            company = _get_company()
+        if not company:
+            return {"period": "", "rows": []}
+        limit = cint(limit) or 5
+        currency = frappe.get_value("Company", company, "default_currency") or "AED"
+
+        fy = frappe.get_all(
+            "Fiscal Year",
+            filters=[["year_start_date", "<=", frappe.utils.today()],
+                     ["year_end_date", ">=", frappe.utils.today()]],
+            fields=["year_start_date", "year_end_date"], limit=1)
+        if fy:
+            fd, td = cstr(fy[0].year_start_date), cstr(fy[0].year_end_date)
+        else:
+            yr = frappe.utils.today()[:4]
+            fd, td = f"{yr}-01-01", f"{yr}-12-31"
+        prev_fd = frappe.utils.add_years(getdate(fd), -1)
+        prev_td = frappe.utils.add_years(getdate(td), -1)
+
+        def expense_totals(start, end):
+            rows = frappe.db.sql("""
+                SELECT g.account AS account, IFNULL(SUM(g.debit - g.credit), 0) AS amount
+                FROM `tabGL Entry` g
+                INNER JOIN `tabAccount` a ON a.name = g.account
+                WHERE g.company=%(co)s AND g.is_cancelled=0 AND a.root_type='Expense'
+                  AND g.posting_date BETWEEN %(fd)s AND %(td)s
+                GROUP BY g.account
+            """, {"co": company, "fd": start, "td": end}, as_dict=True)
+            return {r.account: flt(r.amount) for r in rows}
+
+        current = expense_totals(fd, td)
+        previous = expense_totals(prev_fd, prev_td)
+
+        top = sorted(current.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+        rows = []
+        for account, amount in top:
+            if amount <= 0:
+                continue
+            prev = flt(previous.get(account, 0))
+            if prev > 0:
+                change_pct = round((amount - prev) / prev * 100, 1)
+            else:
+                change_pct = None  # no prior-year baseline
+            rows.append({
+                "account": account,
+                "account_name": frappe.get_value("Account", account, "account_name") or account,
+                "current": round(amount, 2),
+                "previous": round(prev, 2),
+                "change_pct": change_pct,
+            })
+        return {
+            "currency": currency,
+            "period": f"{fd} → {td}",
+            "prev_period": f"{cstr(prev_fd)} → {cstr(prev_td)}",
+            "rows": rows,
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_top_expense_trends")
+        return {"period": "", "rows": []}
 
 
 def _get_naming_series(doctype):
@@ -1047,17 +1298,116 @@ def get_transaction_meta(party_type="sales", company=None):
                                   fields=["name", "account_name"], order_by="name")
         templates = frappe.get_all(tpl_doctype, filters={"company": company},
                                    fields=["name"], order_by="name")
-        return {"accounts": accounts, "templates": [t.name for t in templates], "currency": currency}
+        payment_terms = frappe.get_all("Payment Terms Template", pluck="name", order_by="name")
+        terms = frappe.get_all("Terms and Conditions", pluck="name", order_by="name")
+        uoms = frappe.get_all("UOM", pluck="name", order_by="name")
+        tax_categories = frappe.get_all("Tax Category", pluck="name", order_by="name")
+        return {"accounts": accounts, "templates": [t.name for t in templates], "currency": currency,
+                "payment_terms": payment_terms, "terms": terms, "uoms": uoms,
+                "tax_categories": tax_categories}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: get_transaction_meta")
         return {"accounts": [], "templates": [], "currency": "AED"}
 
 
 # ── Customer ─────────────────────────────────────────────────────
+CUSTOMER_VAT_TREATMENTS = {
+    "VAT Registered", "VAT Not Registered", "GCC VAT Registered",
+    "GCC VAT Not Registered", "Non-GCC", "Designated Zone", "Exempt",
+    "Out of Scope",
+}
+
+
+# UAE compliance fields installed on Customer by customer_tax_setup.py.
+UAE_COMPLIANCE_FIELDS = {
+    "trade_license_number": "custom_trade_license_number",
+    "trade_license_expiry": "custom_trade_license_expiry",
+    "emirates_id": "custom_emirates_id",
+    "vat_number": "custom_vat_number",
+    "vat_registration_date": "custom_vat_registration_date",
+    "vat_period_stagger": "custom_vat_period_stagger",
+    "corporate_tax_number": "custom_corporate_tax_number",
+    "corporate_tax_period_date": "custom_corporate_tax_period_date",
+}
+
+
+def _apply_uae_compliance(doc, values):
+    """Set the UAE compliance custom fields on a Customer doc from a values dict."""
+    for arg, fieldname in UAE_COMPLIANCE_FIELDS.items():
+        val = values.get(arg)
+        if val is not None and doc.meta.has_field(fieldname):
+            doc.set(fieldname, cstr(val).strip() or None)
+
+
+def _validate_customer_tax_details(vat_treatment=None, tax_id=None,
+                                   tax_category=None, country=None):
+    vat_treatment = cstr(vat_treatment).strip()
+    tax_id = cstr(tax_id).strip()
+    country = cstr(country).strip()
+    if vat_treatment and vat_treatment not in CUSTOMER_VAT_TREATMENTS:
+        frappe.throw("Please select a valid VAT treatment.")
+    if tax_category and not frappe.db.exists("Tax Category", tax_category):
+        frappe.throw("Please select a valid Tax Category.")
+    if country and not frappe.db.exists("Country", country):
+        frappe.throw("Please select a valid country.")
+    if vat_treatment in {"VAT Registered", "GCC VAT Registered"} and not tax_id:
+        frappe.throw("A VAT/TRN number is required for VAT-registered customers.")
+    if country == "United Arab Emirates" and tax_id:
+        digits = "".join(char for char in tax_id if char.isdigit())
+        if len(digits) != 15 or len(digits) != len(tax_id):
+            frappe.throw("A UAE Tax Registration Number must contain exactly 15 digits.")
+
+
+def _upsert_customer_address(customer, customer_name, address_line1=None,
+                             address_line2=None, city=None, state=None,
+                             pincode=None, country=None):
+    values = [address_line1, address_line2, city, state, pincode]
+    if not any(cstr(value).strip() for value in values):
+        return None
+    if not cstr(address_line1).strip() or not cstr(city).strip() or not cstr(country).strip():
+        frappe.throw("Address line 1, city, and country are required when adding an address.")
+
+    address_name = frappe.db.sql("""
+        SELECT a.name
+        FROM `tabAddress` a
+        INNER JOIN `tabDynamic Link` dl ON dl.parent=a.name
+        WHERE dl.parenttype='Address' AND dl.link_doctype='Customer'
+          AND dl.link_name=%s
+        ORDER BY a.is_primary_address DESC, a.modified DESC
+        LIMIT 1
+    """, customer)
+    address = (frappe.get_doc("Address", address_name[0][0]) if address_name else
+               frappe.new_doc("Address"))
+    address.update({
+        "address_title": customer_name,
+        "address_type": "Billing",
+        "address_line1": cstr(address_line1).strip(),
+        "address_line2": cstr(address_line2).strip(),
+        "city": cstr(city).strip(),
+        "state": cstr(state).strip(),
+        "pincode": cstr(pincode).strip(),
+        "country": cstr(country).strip(),
+        "is_primary_address": 1,
+    })
+    if address.is_new():
+        address.append("links", {"link_doctype": "Customer", "link_name": customer})
+        address.insert(ignore_permissions=True)
+    else:
+        address.save(ignore_permissions=True)
+    return address.name
+
+
 @frappe.whitelist()
 def create_customer(customer_name, customer_type="Company", customer_group=None,
-                    territory=None, mobile_no=None, email_id=None, tax_id=None):
+                    territory=None, mobile_no=None, email_id=None, tax_id=None,
+                    vat_treatment=None, tax_category=None, address_line1=None,
+                    address_line2=None, city=None, state=None, pincode=None,
+                    country=None, trade_license_number=None, trade_license_expiry=None,
+                    emirates_id=None, vat_number=None, vat_registration_date=None,
+                    vat_period_stagger=None, corporate_tax_number=None,
+                    corporate_tax_period_date=None):
     try:
+        _validate_customer_tax_details(vat_treatment, tax_id, tax_category, country)
         if not customer_group:
             grp = frappe.get_all("Customer Group", pluck="name", limit=1)
             customer_group = grp[0] if grp else "All Customer Groups"
@@ -1076,10 +1426,27 @@ def create_customer(customer_name, customer_type="Company", customer_group=None,
             doc.email_id = email_id
         if tax_id:
             doc.tax_id = tax_id
+        if tax_category:
+            doc.tax_category = tax_category
+        if vat_treatment and doc.meta.has_field("custom_vat_treatment"):
+            doc.custom_vat_treatment = vat_treatment
+        _apply_uae_compliance(doc, {
+            "trade_license_number": trade_license_number,
+            "trade_license_expiry": trade_license_expiry, "emirates_id": emirates_id,
+            "vat_number": vat_number, "vat_registration_date": vat_registration_date,
+            "vat_period_stagger": vat_period_stagger,
+            "corporate_tax_number": corporate_tax_number,
+            "corporate_tax_period_date": corporate_tax_period_date,
+        })
 
         doc.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
-        return {"name": doc.name, "customer_name": doc.customer_name}
+        address = _upsert_customer_address(
+            doc.name, doc.customer_name, address_line1, address_line2, city,
+            state, pincode, country,
+        )
+        return {"name": doc.name, "customer_name": doc.customer_name,
+                "address": address}
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: Create Customer")
@@ -1143,6 +1510,7 @@ def get_customer_connections(customer):
             ],
         })
 
+    primary_address = addresses[0] if addresses else {}
     return {
         "customer": {
             "name": doc.name,
@@ -1150,10 +1518,20 @@ def get_customer_connections(customer):
             "customer_type": doc.customer_type,
             "tax_id": doc.tax_id,
             "tax_category": doc.tax_category,
+            "vat_treatment": (doc.get("custom_vat_treatment")
+                              if doc.meta.has_field("custom_vat_treatment") else None),
+            **{arg: (cstr(doc.get(fieldname)) if doc.meta.has_field(fieldname) and doc.get(fieldname) else None)
+               for arg, fieldname in UAE_COMPLIANCE_FIELDS.items()},
             "mobile_no": doc.mobile_no,
             "email_id": doc.email_id,
             "territory": doc.territory,
             "customer_group": doc.customer_group,
+            "address_line1": primary_address.get("address_line1"),
+            "address_line2": primary_address.get("address_line2"),
+            "city": primary_address.get("city"),
+            "state": primary_address.get("state"),
+            "pincode": primary_address.get("pincode"),
+            "country": primary_address.get("country"),
         },
         "contacts": contacts,
         "addresses": addresses,
@@ -1245,6 +1623,101 @@ def create_payment_entry(payment_type, party_type, party, posting_date,
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: Create Payment Entry")
         frappe.throw(str(e))
+
+
+def _default_bank_cash_account(company, mode_of_payment=None):
+    """Resolve a bank/cash GL account: Mode of Payment default first, then any
+    Bank account, then any Cash account."""
+    if mode_of_payment:
+        acc = frappe.db.get_value("Mode of Payment Account",
+                                  {"parent": mode_of_payment, "company": company}, "default_account")
+        if acc:
+            return acc
+    for atype in ("Bank", "Cash"):
+        acc = frappe.get_all("Account", filters={"company": company, "account_type": atype,
+                                                  "is_group": 0}, pluck="name", limit=1)
+        if acc:
+            return acc[0]
+    return None
+
+
+@frappe.whitelist()
+def record_party_payment(party_type, party, paid_amount, posting_date=None,
+                         mode_of_payment="Cash", reference_no=None, company=None):
+    """Simplified on-account payment: Customer → Receive, Supplier → Pay.
+    Bank/cash and party accounts are resolved automatically."""
+    try:
+        if frappe.session.user in ("Guest", None, ""):
+            frappe.throw("You must be signed in.")
+        if not company:
+            company = _get_company()
+        paid_amount = flt(paid_amount)
+        if paid_amount <= 0:
+            frappe.throw("Amount must be greater than zero.")
+
+        from erpnext.accounts.party import get_party_account
+        party_account = get_party_account(party_type, party, company)
+        bank = _default_bank_cash_account(company, mode_of_payment)
+        if not party_account or not bank:
+            frappe.throw("Could not resolve the bank/cash or party account. Set up a Bank or Cash account first.")
+
+        payment_type = "Receive" if party_type == "Customer" else "Pay"
+        paid_from = party_account if payment_type == "Receive" else bank
+        paid_to = bank if payment_type == "Receive" else party_account
+
+        return create_payment_entry(payment_type, party_type, party, posting_date,
+                                    paid_amount, paid_from, paid_to,
+                                    mode_of_payment=mode_of_payment, company=company,
+                                    reference_no=reference_no)
+    except frappe.ValidationError:
+        raise
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: record_party_payment")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_party_payment_summary(party_type, party, company=None):
+    """Payment history + 6-month trend + outstanding for a customer/supplier."""
+    try:
+        if not company:
+            company = _get_company()
+        rows = frappe.get_all("Payment Entry",
+            filters={"party_type": party_type, "party": party, "docstatus": 1},
+            fields=["name", "posting_date", "paid_amount", "mode_of_payment",
+                    "reference_no", "payment_type"],
+            order_by="posting_date desc", limit=50)
+        total = sum(flt(r.paid_amount) for r in rows)
+
+        # 6-month trend
+        import collections
+        trend = collections.OrderedDict()
+        today = getdate(frappe.utils.today())
+        for i in range(5, -1, -1):
+            d = frappe.utils.add_months(today, -i)
+            trend[d.strftime("%Y-%m")] = 0.0
+        for r in rows:
+            key = getdate(r.posting_date).strftime("%Y-%m")
+            if key in trend:
+                trend[key] += flt(r.paid_amount)
+
+        inv_dt = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+        party_field = "customer" if party_type == "Customer" else "supplier"
+        outstanding = flt(frappe.db.sql(f"""
+            SELECT IFNULL(SUM(outstanding_amount),0) FROM `tab{inv_dt}`
+            WHERE docstatus=1 AND {party_field}=%s AND outstanding_amount>0
+        """, party)[0][0])
+
+        return {
+            "currency": frappe.get_value("Company", company, "default_currency") or "AED",
+            "payments": rows,
+            "total_paid": total,
+            "outstanding": outstanding,
+            "trend": [{"month": k, "amount": v} for k, v in trend.items()],
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_party_payment_summary")
+        return {"payments": [], "total_paid": 0, "outstanding": 0, "trend": [], "currency": "AED"}
 
 
 # ── Sales Order ──────────────────────────────────────────────────
@@ -1436,9 +1909,19 @@ def create_delivery_note(customer, posting_date, items, company=None, remarks=No
 # ── Update Customer ──────────────────────────────────────────────
 @frappe.whitelist()
 def update_customer(customer_name, customer_type=None, mobile_no=None,
-                    email_id=None, tax_id=None, territory=None):
+                    email_id=None, tax_id=None, territory=None,
+                    customer_display_name=None, vat_treatment=None,
+                    tax_category=None, address_line1=None, address_line2=None,
+                    city=None, state=None, pincode=None, country=None,
+                    customer_group=None, trade_license_number=None,
+                    trade_license_expiry=None, emirates_id=None, vat_number=None,
+                    vat_registration_date=None, vat_period_stagger=None,
+                    corporate_tax_number=None, corporate_tax_period_date=None):
     try:
+        _validate_customer_tax_details(vat_treatment, tax_id, tax_category, country)
         doc = frappe.get_doc("Customer", customer_name)
+        if customer_display_name:
+            doc.customer_name = customer_display_name
         if customer_type:
             doc.customer_type = customer_type
         if mobile_no is not None:
@@ -1447,11 +1930,30 @@ def update_customer(customer_name, customer_type=None, mobile_no=None,
             doc.email_id = email_id
         if tax_id is not None:
             doc.tax_id = tax_id
-        if territory:
+        if territory is not None:
             doc.territory = territory
+        if customer_group:
+            doc.customer_group = customer_group
+        if tax_category is not None:
+            doc.tax_category = tax_category
+        if vat_treatment is not None and doc.meta.has_field("custom_vat_treatment"):
+            doc.custom_vat_treatment = vat_treatment
+        _apply_uae_compliance(doc, {
+            "trade_license_number": trade_license_number,
+            "trade_license_expiry": trade_license_expiry, "emirates_id": emirates_id,
+            "vat_number": vat_number, "vat_registration_date": vat_registration_date,
+            "vat_period_stagger": vat_period_stagger,
+            "corporate_tax_number": corporate_tax_number,
+            "corporate_tax_period_date": corporate_tax_period_date,
+        })
         doc.flags.ignore_permissions = True
         doc.save(ignore_permissions=True)
-        return {"name": doc.name, "customer_name": doc.customer_name}
+        address = _upsert_customer_address(
+            doc.name, doc.customer_name, address_line1, address_line2, city,
+            state, pincode, country,
+        )
+        return {"name": doc.name, "customer_name": doc.customer_name,
+                "address": address}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: Update Customer")
         frappe.throw(str(e))
@@ -1887,6 +2389,43 @@ def get_portal_metadata():
 
 
 @frappe.whitelist()
+def get_customer_form_metadata():
+    """Return validated options used by the customer create/edit form."""
+    return {
+        "countries": frappe.get_all("Country", pluck="name", order_by="name", limit=300),
+        "tax_categories": frappe.get_all("Tax Category", pluck="name", order_by="name", limit=300),
+        "customer_groups": frappe.get_all("Customer Group", pluck="name", order_by="name", limit=300),
+        "territories": frappe.get_all("Territory", pluck="name", order_by="name", limit=300),
+        "vat_treatments": sorted(CUSTOMER_VAT_TREATMENTS),
+    }
+
+
+@frappe.whitelist()
+def get_portal_translations(language, messages=None):
+    """Return installed Frappe/ERPNext translations for portal UI messages."""
+    language = cstr(language).strip().lower()
+    if language not in {"en", "ar", "tr", "ru", "es"}:
+        frappe.throw("Unsupported portal language.")
+    if language == "en":
+        return {}
+    requested = frappe.parse_json(messages) if isinstance(messages, str) else (messages or [])
+    if not isinstance(requested, list) or len(requested) > 400:
+        frappe.throw("A maximum of 400 translation messages can be requested.")
+    from frappe.translate import get_all_translations
+
+    catalog = get_all_translations(language)
+    result = {}
+    for message in requested:
+        source = cstr(message).strip()
+        if not source or len(source) > 300:
+            continue
+        translated = catalog.get(source)
+        if translated and translated != source:
+            result[source] = translated
+    return result
+
+
+@frappe.whitelist()
 def get_customers_list(search=None):
     filters = {"disabled": 0}
     or_filters = None
@@ -1908,31 +2447,56 @@ def get_customers_list(search=None):
 @frappe.whitelist()
 def create_employee(employee_name, gender, date_of_joining, company=None,
                     status="Active", date_of_birth=None, department=None,
-                    designation=None, company_email=None, cell_number=None):
+                    designation=None, company_email=None, cell_number=None,
+                    employment_type=None, personal_email=None, branch=None,
+                    salary_currency=None, salary_mode=None, payroll_cost_center=None,
+                    bank_name=None, bank_ac_no=None, iban=None, passport_number=None):
     try:
         if not company:
             company = _get_company()
         if not company:
             frappe.throw("No company found.")
 
+        # Split full name into first / middle / last (first_name is mandatory)
+        name_parts = (employee_name or "").strip().split()
+        first_name = name_parts[0] if name_parts else employee_name
+        last_name = name_parts[-1] if len(name_parts) > 1 else None
+        middle_name = " ".join(name_parts[1:-1]) if len(name_parts) > 2 else None
+
         doc = frappe.get_doc({
             "doctype": "Employee",
             "employee_name": employee_name,
+            "first_name": first_name,
             "gender": gender,
             "date_of_joining": date_of_joining or nowdate(),
             "status": status,
             "company": company,
         })
-        if date_of_birth:
-            doc.date_of_birth = date_of_birth
-        if department:
-            doc.department = department
-        if designation:
-            doc.designation = designation
-        if company_email:
-            doc.company_email = company_email
-        if cell_number:
-            doc.cell_number = cell_number
+        if last_name:
+            doc.last_name = last_name
+        if middle_name:
+            doc.middle_name = middle_name
+        # Map optional fields onto the doc only when provided
+        optional = {
+            "date_of_birth": date_of_birth,
+            "department": department,
+            "designation": designation,
+            "company_email": company_email,
+            "cell_number": cell_number,
+            "employment_type": employment_type,
+            "personal_email": personal_email,
+            "branch": branch,
+            "salary_currency": salary_currency,
+            "salary_mode": salary_mode,
+            "payroll_cost_center": payroll_cost_center,
+            "bank_name": bank_name,
+            "bank_ac_no": bank_ac_no,
+            "iban": iban,
+            "passport_number": passport_number,
+        }
+        for field, value in optional.items():
+            if value:
+                doc.set(field, value)
 
         doc.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
@@ -1940,6 +2504,43 @@ def create_employee(employee_name, gender, date_of_joining, company=None,
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: Create Employee")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def update_employee_payroll(employee, salary_currency=None, salary_mode=None,
+                            payroll_cost_center=None, bank_name=None, bank_ac_no=None,
+                            iban=None, passport_number=None, cell_number=None,
+                            date_of_birth=None, company_email=None, personal_email=None,
+                            designation=None, department=None, employment_type=None):
+    """Update payroll / bank / contact fields on an existing Employee — the data
+    needed to generate salary slips and salary certificates."""
+    try:
+        doc = frappe.get_doc("Employee", employee)
+        fields = {
+            "salary_currency": salary_currency,
+            "salary_mode": salary_mode,
+            "payroll_cost_center": payroll_cost_center,
+            "bank_name": bank_name,
+            "bank_ac_no": bank_ac_no,
+            "iban": iban,
+            "passport_number": passport_number,
+            "cell_number": cell_number,
+            "date_of_birth": date_of_birth,
+            "company_email": company_email,
+            "personal_email": personal_email,
+            "designation": designation,
+            "department": department,
+            "employment_type": employment_type,
+        }
+        for field, value in fields.items():
+            if value is not None and value != "":
+                doc.set(field, value)
+        doc.flags.ignore_permissions = True
+        doc.save(ignore_permissions=True)
+        return {"name": doc.name, "employee_name": doc.employee_name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: update_employee_payroll")
         frappe.throw(str(e))
 
 
@@ -2077,7 +2678,7 @@ def get_attendance_log(employee=None, from_date=None, to_date=None):
             filters=filters,
             fields=["name","employee","employee_name","attendance_date","status",
                     "in_time","out_time","working_hours","department"],
-            order_by="attendance_date desc", limit=200)
+            order_by="attendance_date desc", limit_page_length=5000)
         return rows
     except Exception as e:
         frappe.throw(str(e))
@@ -2403,6 +3004,76 @@ def get_job_openings():
 
 
 @frappe.whitelist()
+def apply_for_job(job_opening, applicant_name, email_id, phone_number=None, country=None,
+                  cover_letter=None, resume_link=None, resume_base64=None, resume_filename=None):
+    """Create a Job Applicant from the authenticated firm portal."""
+    import base64
+    import os
+    from frappe.utils import nowdate, validate_email_address
+    from frappe.utils.file_manager import save_file
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Please sign in to apply for a job.", frappe.PermissionError)
+
+    applicant_name = cstr(applicant_name).strip()
+    email_id = cstr(email_id).strip().lower()
+    if not applicant_name or not email_id:
+        frappe.throw("Applicant name and email address are required.")
+    validate_email_address(email_id, throw=True)
+
+    opening = frappe.db.get_value(
+        "Job Opening", job_opening,
+        ["name", "status", "closes_on", "designation"], as_dict=True,
+    )
+    if not opening or opening.status != "Open":
+        frappe.throw("This job opening is no longer accepting applications.")
+    if opening.closes_on and getdate(opening.closes_on) < getdate(nowdate()):
+        frappe.throw("The application deadline for this job opening has passed.")
+
+    duplicate = frappe.db.exists("Job Applicant", {
+        "email_id": email_id,
+        "job_title": job_opening,
+        "status": ["not in", ["Rejected"]],
+    })
+    if duplicate:
+        frappe.throw(f"An active application already exists for {email_id} and this job opening.")
+
+    if country and not frappe.db.exists("Country", country):
+        frappe.throw("Please select a valid country.")
+
+    doc = frappe.get_doc({
+        "doctype": "Job Applicant",
+        "applicant_name": applicant_name,
+        "email_id": email_id,
+        "phone_number": cstr(phone_number).strip(),
+        "country": country or None,
+        "job_title": job_opening,
+        "designation": opening.designation,
+        "status": "Open",
+        "cover_letter": cover_letter,
+        "resume_link": cstr(resume_link).strip(),
+    })
+    doc.insert(ignore_permissions=True)
+
+    if resume_base64 and resume_filename:
+        filename = os.path.basename(cstr(resume_filename))
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if extension not in {"pdf", "doc", "docx"}:
+            frappe.throw("Resume must be a PDF, DOC, or DOCX file.")
+        encoded = cstr(resume_base64).split(",", 1)[-1]
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (TypeError, ValueError):
+            frappe.throw("The resume file could not be read.")
+        if len(content) > 5 * 1024 * 1024:
+            frappe.throw("Resume file must be 5 MB or smaller.")
+        file_doc = save_file(filename, content, "Job Applicant", doc.name, is_private=1)
+        doc.db_set("resume_attachment", file_doc.file_url)
+
+    return {"name": doc.name, "status": doc.status}
+
+
+@frappe.whitelist()
 def get_employee_details(employee):
     """Full profile: info + last 6 salary slips + leave balances + leave taken."""
     try:
@@ -2412,7 +3083,9 @@ def get_employee_details(employee):
         emp = frappe.get_value("Employee", employee,
             ["name","employee_name","department","designation","company",
              "date_of_joining","employment_type","gender","cell_number",
-             "personal_email","company_email","branch","grade","status"],
+             "personal_email","company_email","branch","grade","status",
+             "date_of_birth","passport_number","salary_currency","salary_mode",
+             "bank_name","bank_ac_no","iban"],
             as_dict=True)
         if not emp:
             frappe.throw(f"Employee {employee} not found")
@@ -2485,6 +3158,110 @@ def get_employee_details(employee):
         }
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: get_employee_details")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_salary_certificate(employee, salary_slip=None):
+    """Gather all data needed to generate a UAE-style salary certificate.
+
+    Returns employee info, company/letterhead info, and a salary breakdown
+    (basic + allowances/earnings, deductions, gross & net) taken from the
+    latest submitted Salary Slip (or the one passed in)."""
+    try:
+        from frappe.utils import money_in_words, get_datetime, formatdate
+
+        emp = frappe.get_value("Employee", employee,
+            ["name", "employee_name", "department", "designation", "company",
+             "date_of_joining", "employment_type", "gender", "cell_number",
+             "personal_email", "company_email", "branch", "grade", "status",
+             "date_of_birth", "passport_number", "valid_upto", "bank_name",
+             "bank_ac_no", "iban", "salary_currency", "salary_mode"],
+            as_dict=True)
+        if not emp:
+            frappe.throw(f"Employee {employee} not found")
+
+        # Optional UAE custom fields (nationality / Emirates ID / visa) if present
+        meta_fields = {f.fieldname for f in frappe.get_meta("Employee").fields}
+        for fld in ("custom_nationality", "nationality", "custom_emirates_id",
+                    "emirates_id", "custom_visa_number", "visa_number",
+                    "custom_labour_card_no", "labour_card_no"):
+            if fld in meta_fields:
+                emp[fld] = frappe.db.get_value("Employee", employee, fld)
+
+        # Pick the salary slip: requested one, else latest submitted, else latest draft
+        slip_name = salary_slip
+        if not slip_name:
+            slip_name = frappe.db.get_value("Salary Slip",
+                {"employee": employee, "docstatus": 1},
+                "name", order_by="start_date desc")
+        if not slip_name:
+            slip_name = frappe.db.get_value("Salary Slip",
+                {"employee": employee, "docstatus": ["!=", 2]},
+                "name", order_by="start_date desc")
+
+        slip = None
+        earnings, deductions = [], []
+        if slip_name:
+            sdoc = frappe.get_doc("Salary Slip", slip_name)
+            slip = {
+                "name": sdoc.name,
+                "start_date": str(sdoc.start_date or ""),
+                "end_date": str(sdoc.end_date or ""),
+                "gross_pay": flt(sdoc.gross_pay),
+                "total_deduction": flt(sdoc.total_deduction),
+                "net_pay": flt(sdoc.net_pay),
+                "currency": sdoc.get("currency") or emp.get("salary_currency"),
+            }
+            for e in sdoc.get("earnings", []):
+                if flt(e.amount) != 0:
+                    earnings.append({"component": e.salary_component, "amount": flt(e.amount)})
+            for de in sdoc.get("deductions", []):
+                if flt(de.amount) != 0:
+                    deductions.append({"component": de.salary_component, "amount": flt(de.amount)})
+
+        # Company / letter-head info
+        company_name = emp.get("company") or _get_company()
+        comp = frappe.get_value("Company", company_name,
+            ["name", "country", "tax_id", "phone_no", "email",
+             "company_logo", "default_currency", "registration_details"],
+            as_dict=True) or {}
+
+        # Company primary address (linked via Dynamic Link)
+        address = {}
+        try:
+            addr_name = frappe.db.sql("""
+                SELECT parent FROM `tabDynamic Link`
+                WHERE link_doctype='Company' AND link_name=%s
+                  AND parenttype='Address'
+                ORDER BY parent LIMIT 1
+            """, company_name)
+            if addr_name:
+                address = frappe.get_value("Address", addr_name[0][0],
+                    ["address_line1", "address_line2", "city", "state",
+                     "country", "pincode", "phone", "email_id"],
+                    as_dict=True) or {}
+        except Exception:
+            pass
+
+        currency = (slip or {}).get("currency") or emp.get("salary_currency") \
+            or comp.get("default_currency") or "AED"
+        net_pay = (slip or {}).get("net_pay") or 0
+        amount_in_words = money_in_words(net_pay, currency) if net_pay else ""
+
+        return {
+            "employee": emp,
+            "company": comp,
+            "address": address,
+            "slip": slip,
+            "earnings": earnings,
+            "deductions": deductions,
+            "currency": currency,
+            "amount_in_words": amount_in_words,
+            "issue_date": formatdate(nowdate(), "dd MMMM yyyy"),
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_salary_certificate")
         frappe.throw(str(e))
 
 
@@ -2914,10 +3691,21 @@ def get_expense_types():
 
 @frappe.whitelist()
 def employee_checkin(employee, log_type, time=None, latitude=None, longitude=None, device_id=None, skip_auto_attendance=0):
-    """Create an Employee Checkin record (HRMS). log_type = 'IN' or 'OUT'."""
+    """Create a GPS-verified Employee Checkin record (HRMS)."""
     try:
         from frappe.utils import now_datetime, get_datetime
-        import datetime
+
+        log_type = cstr(log_type).strip().upper()
+        if log_type not in {"IN", "OUT"}:
+            frappe.throw("Log type must be IN or OUT.")
+        if latitude is None or longitude is None or not cstr(latitude).strip() or not cstr(longitude).strip():
+            frappe.throw("GPS location is required for check-in and check-out.")
+        latitude = flt(latitude)
+        longitude = flt(longitude)
+        if latitude == 0 and longitude == 0:
+            frappe.throw("A valid GPS location is required for check-in and check-out.")
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            frappe.throw("The supplied GPS coordinates are invalid.")
 
         emp_doc = frappe.get_value("Employee", employee, ["name", "employee_name", "company"], as_dict=True)
         if not emp_doc:
@@ -2928,12 +3716,10 @@ def employee_checkin(employee, log_type, time=None, latitude=None, longitude=Non
         doc = frappe.new_doc("Employee Checkin")
         doc.employee = emp_doc.name
         doc.employee_name = emp_doc.employee_name
-        doc.log_type = log_type   # 'IN' or 'OUT'
+        doc.log_type = log_type
         doc.time = checkin_time
-        if latitude:
-            doc.latitude = flt(latitude)
-        if longitude:
-            doc.longitude = flt(longitude)
+        doc.latitude = latitude
+        doc.longitude = longitude
         if device_id:
             doc.device_id = cstr(device_id)
         doc.skip_auto_attendance = int(skip_auto_attendance)
@@ -3180,12 +3966,33 @@ def get_quotations(search=None, status=None, from_date=None, to_date=None):
 
 @frappe.whitelist()
 def create_quotation(party_type, party_name, transaction_date, items, valid_till=None,
-                     remarks=None, company=None):
+                     remarks=None, company=None, title=None, currency=None,
+                     conversion_rate=None, taxes_and_charges=None,
+                     tax_category=None, additional_discount_percentage=None,
+                     payment_terms_template=None, tc_name=None, terms=None,
+                     order_type="Sales", save_as_draft=0):
     import json
     try:
         if not company:
             company = _get_company()
         items = json.loads(items) if isinstance(items, str) else items
+        if not items:
+            frappe.throw("Add at least one quotation item.")
+        discount = flt(additional_discount_percentage)
+        if discount < 0 or discount > 100:
+            frappe.throw("Additional discount must be between 0 and 100 percent.")
+        if taxes_and_charges and not frappe.db.exists(
+            "Sales Taxes and Charges Template", {"name": taxes_and_charges, "company": company}
+        ):
+            frappe.throw("Please select a valid sales tax template for this company.")
+        if payment_terms_template and not frappe.db.exists("Payment Terms Template", payment_terms_template):
+            frappe.throw("Please select a valid Payment Terms Template.")
+        if tc_name and not frappe.db.exists("Terms and Conditions", tc_name):
+            frappe.throw("Please select valid Terms and Conditions.")
+        if tax_category and not frappe.db.exists("Tax Category", tax_category):
+            frappe.throw("Please select a valid Tax Category.")
+        if currency and not frappe.db.exists("Currency", currency):
+            frappe.throw("Please select a valid currency.")
         doc = frappe.get_doc({
             "doctype": "Quotation",
             "quotation_to": party_type,
@@ -3193,16 +4000,33 @@ def create_quotation(party_type, party_name, transaction_date, items, valid_till
             "transaction_date": transaction_date,
             "valid_till": valid_till or frappe.utils.add_days(transaction_date, 30),
             "company": company,
+            "title": title or None,
+            "order_type": order_type or "Sales",
+            "currency": currency or frappe.get_value("Company", company, "default_currency"),
+            "conversion_rate": flt(conversion_rate) or 1,
+            "taxes_and_charges": taxes_and_charges or None,
+            "tax_category": tax_category or None,
+            "apply_discount_on": "Grand Total",
+            "additional_discount_percentage": discount,
+            "payment_terms_template": payment_terms_template or None,
+            "tc_name": tc_name or None,
+            "terms": terms or (frappe.db.get_value("Terms and Conditions", tc_name, "terms") if tc_name else None),
             "remarks": remarks or "",
             "items": [
                 {"item_code": i["item_code"], "qty": flt(i.get("qty", 1)),
-                 "rate": flt(i.get("rate", 0)), "description": i.get("description", "")}
+                 "rate": flt(i.get("rate", 0)), "description": i.get("description", ""),
+                 "uom": i.get("uom") or None,
+                 "discount_percentage": flt(i.get("discount_percentage"))}
                 for i in items
             ],
         })
+        if taxes_and_charges:
+            doc.append_taxes_from_master()
         doc.insert(ignore_permissions=True)
-        doc.submit()
-        return {"name": doc.name, "grand_total": flt(doc.grand_total), "ok": True}
+        if not cint(save_as_draft):
+            doc.submit()
+        return {"name": doc.name, "grand_total": flt(doc.grand_total),
+                "status": doc.status, "docstatus": doc.docstatus, "ok": True}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: create_quotation")
         frappe.throw(str(e))
@@ -3861,7 +4685,7 @@ def import_bank_statement(bank_account, transactions):
         rows = json.loads(transactions) if isinstance(transactions, str) else transactions
         company = frappe.db.get_value("Bank Account", bank_account, "company") or _get_company()
         currency = frappe.db.get_value("Bank Account", bank_account, "currency") or "AED"
-        created, skipped = 0, 0
+        created, skipped, created_names = 0, 0, []
         for r in rows:
             date = r.get("date")
             deposit = flt(r.get("deposit") or 0)
@@ -3893,8 +4717,11 @@ def import_bank_statement(bank_account, transactions):
             doc.insert(ignore_permissions=True)
             doc.submit()
             created += 1
+            created_names.append(doc.name)
+        auto_result = _auto_reconcile_bank_transactions(bank_account, created_names)
         frappe.db.commit()
-        return {"created": created, "skipped": skipped, "ok": True}
+        return {"created": created, "skipped": skipped, "auto_matched": auto_result["matched"],
+                "needs_review": created - auto_result["matched"], "matches": auto_result["matches"], "ok": True}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: import_bank_statement")
         frappe.throw(str(e))
@@ -3970,6 +4797,97 @@ def reconcile_bank_transaction(bank_transaction, payment_entry, amount=None):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: reconcile_bank_transaction")
         frappe.throw(str(e))
+
+
+def _match_text(value):
+    import re
+    return re.sub(r"[^a-z0-9]", "", cstr(value).lower())
+
+
+def _apply_bank_payment_match(bt, payment, amount):
+    for row in bt.get("payment_entries", []):
+        if row.payment_document == "Payment Entry" and row.payment_entry == payment:
+            return
+    bt.append("payment_entries", {"payment_document":"Payment Entry", "payment_entry":payment,
+                                   "allocated_amount":amount})
+    bt.flags.ignore_permissions = True
+    bt.save(ignore_permissions=True)
+    frappe.db.set_value("Payment Entry", payment, "clearance_date", bt.date)
+
+
+def _auto_reconcile_bank_transactions(bank_account, transaction_names=None, dry_run=False):
+    """Auto-match only unique, high-confidence, full-amount Payment Entries."""
+    from frappe.utils import date_diff
+
+    gl_account = frappe.db.get_value("Bank Account", bank_account, "account")
+    company = frappe.db.get_value("Bank Account", bank_account, "company") or _get_company()
+    if not gl_account:
+        return {"matched":0, "matches":[]}
+    filters = {"bank_account":bank_account, "docstatus":1,
+               "status":["in", ["Pending", "Unreconciled"]]}
+    if transaction_names:
+        filters["name"] = ["in", transaction_names]
+    transactions = frappe.get_all("Bank Transaction", filters=filters,
+        fields=["name","date","deposit","withdrawal","currency","description",
+                "reference_number","bank_party_name"], order_by="date asc", limit=500)
+    payments = frappe.db.sql("""
+        SELECT pe.name, pe.posting_date, pe.payment_type, pe.party, pe.party_name,
+               pe.reference_no, pe.remarks,
+               CASE WHEN pe.payment_type='Receive' THEN pe.received_amount ELSE pe.paid_amount END AS bank_amount,
+               CASE WHEN pe.payment_type='Receive' THEN pe.paid_to_account_currency ELSE pe.paid_from_account_currency END AS currency
+        FROM `tabPayment Entry` pe
+        WHERE pe.docstatus=1 AND pe.company=%(company)s AND pe.clearance_date IS NULL
+          AND ((pe.payment_type='Receive' AND pe.paid_to=%(account)s)
+            OR (pe.payment_type='Pay' AND pe.paid_from=%(account)s))
+        ORDER BY pe.posting_date ASC
+    """, {"company":company, "account":gl_account}, as_dict=True)
+    used, matches = set(), []
+    for txn in transactions:
+        amount = flt(txn.deposit) or flt(txn.withdrawal)
+        direction = "Receive" if flt(txn.deposit) > 0 else "Pay"
+        txn_ref = _match_text(txn.reference_number)
+        txn_text = _match_text(" ".join(filter(None, [txn.reference_number, txn.description, txn.bank_party_name])))
+        txn_party = _match_text(txn.bank_party_name)
+        candidates = []
+        for payment in payments:
+            if payment.name in used or payment.payment_type != direction:
+                continue
+            if cstr(payment.currency) != cstr(txn.currency) or abs(flt(payment.bank_amount)-amount) > 0.01:
+                continue
+            days = abs(date_diff(txn.date, payment.posting_date))
+            pay_ref = _match_text(payment.reference_no)
+            pay_party = _match_text(payment.party_name or payment.party)
+            ref_match = bool(pay_ref and txn_ref and pay_ref == txn_ref)
+            id_match = _match_text(payment.name) in txn_text
+            party_match = bool(pay_party and txn_party and (pay_party in txn_party or txn_party in pay_party))
+            if not (ref_match or id_match or (party_match and days <= 5)):
+                continue
+            score = 100 + (80 if ref_match else 0) + (70 if id_match else 0) + (35 if party_match else 0) + max(0, 20-days*4)
+            candidates.append((score, payment, {"reference":ref_match or id_match, "party":party_match, "date_days":days}))
+        candidates.sort(key=lambda row: row[0], reverse=True)
+        if not candidates or (len(candidates)>1 and candidates[0][0]-candidates[1][0] < 20):
+            continue
+        score, payment, reasons = candidates[0]
+        if not dry_run:
+            bt = frappe.get_doc("Bank Transaction", txn.name)
+            _apply_bank_payment_match(bt, payment.name, amount)
+        used.add(payment.name)
+        matches.append({"bank_transaction":txn.name, "payment_entry":payment.name,
+                        "amount":amount, "score":score, "reasons":reasons})
+    return {"matched":len(matches), "matches":matches}
+
+
+@frappe.whitelist()
+def auto_reconcile_bank_transactions(bank_account, from_date=None, to_date=None):
+    filters = {"bank_account":bank_account, "docstatus":1,
+               "status":["in", ["Pending", "Unreconciled"]]}
+    if from_date: filters["date"] = [">=", from_date]
+    names = frappe.get_all("Bank Transaction", filters=filters, pluck="name", limit=500)
+    if to_date:
+        names = frappe.get_all("Bank Transaction", filters={**filters, "date":["between", [from_date or "1900-01-01", to_date]]}, pluck="name", limit=500)
+    result = _auto_reconcile_bank_transactions(bank_account, names)
+    frappe.db.commit()
+    return result
 
 
 @frappe.whitelist()
@@ -4637,6 +5555,72 @@ def get_chart_of_accounts(company=None):
         return {"accounts": accounts, "currency": currency, "company": company}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: get_chart_of_accounts")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_account_meta(company=None):
+    """Group accounts (possible parents) + account-type options for the COA form."""
+    if not company:
+        company = _get_company()
+    groups = frappe.get_all("Account", filters={"company": company, "is_group": 1},
+                            fields=["name", "account_name", "root_type"], order_by="lft")
+    account_types = frappe.get_meta("Account").get_field("account_type").options or ""
+    return {
+        "groups": groups,
+        "account_types": [t for t in account_types.split("\n") if t.strip()],
+        "root_types": ["Asset", "Liability", "Equity", "Income", "Expense"],
+    }
+
+
+@frappe.whitelist()
+def create_account(account_name, parent_account, company=None, is_group=0,
+                   account_type=None, account_number=None, root_type=None):
+    """Create a ledger or group account under a parent."""
+    try:
+        if frappe.session.user in ("Guest", None, ""):
+            frappe.throw("You must be signed in.")
+        if not company:
+            company = _get_company()
+        if not parent_account:
+            frappe.throw("Please choose a parent account.")
+        doc = frappe.get_doc({
+            "doctype": "Account",
+            "account_name": cstr(account_name).strip(),
+            "parent_account": parent_account,
+            "company": company,
+            "is_group": cint(is_group),
+            "account_number": cstr(account_number).strip() or None,
+            "account_type": account_type or None,
+            "root_type": root_type or None,
+        })
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True)
+        return {"name": doc.name, "account_name": doc.account_name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_account")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def update_account(name, account_name=None, account_number=None, account_type=None):
+    """Edit a limited, safe set of fields on an existing account."""
+    try:
+        if frappe.session.user in ("Guest", None, ""):
+            frappe.throw("You must be signed in.")
+        doc = frappe.get_doc("Account", name)
+        if account_name:
+            # ERPNext renames the Account document automatically when account_name changes.
+            doc.account_name = cstr(account_name).strip()
+        if account_number is not None:
+            doc.account_number = cstr(account_number).strip() or None
+        if account_type is not None and not doc.is_group:
+            doc.account_type = account_type or None
+        doc.flags.ignore_permissions = True
+        doc.save(ignore_permissions=True)
+        return {"ok": True, "name": doc.name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: update_account")
         frappe.throw(str(e))
 
 

@@ -638,3 +638,225 @@ def get_kgc_pricing_quote(services=None, doc_count=1, accounting_package="none",
     vat = round(subtotal * 0.05, 2)
     return {"lines": lines, "notes": notes, "subtotal": subtotal,
             "vat": vat, "grand_total": round(subtotal + vat, 2)}
+
+
+# ── Service engagement: per-service required documents + terms ──────────
+# Matched against quotation line item_codes (exact codes and/or code prefixes).
+ENGAGEMENT = [
+    {
+        "key": "accounting", "label": "Accounting & Bookkeeping",
+        "exact": ["KGC-BK"], "prefix": [],
+        "documents": [
+            "Valid trade license copy",
+            "Bank statements for all accounts covering the period",
+            "Sales invoices issued during the period",
+            "Purchase / expense invoices and receipts",
+            "Payroll / WPS records (if any)",
+            "Opening balances / previous trial balance",
+            "Fixed asset register (if applicable)",
+        ],
+        "terms": [
+            "Fees are charged monthly based on the agreed transaction volume; actual volume is verified after data review.",
+            "Source data must be provided in the agreed format and within the agreed cut-off dates.",
+            "Turnaround time is 15–30 working days depending on transaction volume.",
+            "Accounting software subscription is inclusive; Online Access portal is AED 1,400/year extra.",
+            "Quarterly MIS (P&L, Balance Sheet, Cash Flow, Notes) is provided only where a formal engagement is in place.",
+        ],
+    },
+    {
+        "key": "accounting_vat", "label": "Accounting + VAT Return Filing",
+        "exact": ["KGC-BK-VAT"], "prefix": [],
+        "documents": [
+            "Valid trade license copy",
+            "VAT registration certificate (TRN)",
+            "Bank statements for all accounts covering the period",
+            "Sales invoices, credit/debit notes issued",
+            "Purchase / expense invoices and import customs documents (if any)",
+            "Previously filed VAT returns (if any)",
+            "Opening balances / previous trial balance",
+        ],
+        "terms": [
+            "Bookkeeping fees are monthly based on transaction volume; VAT returns are filed on a quarterly basis.",
+            "The client is responsible for the completeness and accuracy of data provided.",
+            "Any FTA penalties arising from late submission of data or incorrect information provided are the client's responsibility.",
+            "Output and input VAT are reconciled before each filing; figures must be confirmed by the client prior to submission.",
+            "Final tax invoice is subject to 5% VAT.",
+        ],
+    },
+    {
+        "key": "vat", "label": "VAT Services",
+        "exact": ["KGC-VAT-REG", "KGC-VAT-RET", "KGC-VAT-ADV", "KGC-VAT-HC"], "prefix": [],
+        "documents": [
+            "Valid trade license copy",
+            "Passport & Emirates ID of owner / partners",
+            "Memorandum of Association (MOA)",
+            "Bank account details / IBAN letter",
+            "Turnover declaration / financial statements",
+            "Sample sales and purchase invoices",
+            "Customs registration details (if applicable)",
+        ],
+        "terms": [
+            "VAT registration / deregistration timelines are subject to FTA processing.",
+            "Monthly VAT advisory covers up to 2 hours per month; the annual VAT health check is performed once per year.",
+            "The client remains responsible for the accuracy of underlying records and supporting documents.",
+        ],
+    },
+    {
+        "key": "corptax", "label": "Corporate Tax",
+        "exact": ["KGC-CT-REG", "KGC-CT-FILE"], "prefix": [],
+        "documents": [
+            "Valid trade license copy",
+            "MOA / AOA and any amendments",
+            "Passport & Emirates ID of owners / partners",
+            "Audited / management financial statements",
+            "Accounting records for the financial period",
+            "Previous Corporate Tax registration details (if any)",
+        ],
+        "terms": [
+            "Corporate Tax simple-return filing applies where financial statements are already prepared.",
+            "The client is responsible for the accuracy and completeness of financial data.",
+            "FTA registration and filing deadlines apply; penalties for late action are the client's responsibility.",
+        ],
+    },
+    {
+        "key": "audit", "label": "Audit",
+        "exact": ["KGC-AUDIT"], "prefix": [],
+        "documents": [
+            "Valid trade license and MOA (with amendments)",
+            "Trial balance and general ledger for the year",
+            "Bank statements and bank confirmation letters",
+            "Sales and purchase invoices",
+            "Fixed asset register and inventory listing",
+            "Prior-year audited financial statements",
+            "Lease agreements and payroll records",
+        ],
+        "terms": [
+            "Audit fees are based on annual revenue tiers; revenue exceeding AED 8M is quoted after data review.",
+            "Management is responsible for the preparation and fair presentation of the financial statements.",
+            "The audit is conducted in accordance with International Standards on Auditing (ISA) and IFRS.",
+            "A signed engagement letter is required before commencement of the audit.",
+        ],
+    },
+    {
+        "key": "trc", "label": "Tax Residency Certificate",
+        "exact": ["KGC-TRC"], "prefix": [],
+        "documents": [
+            "Valid trade license and MOA",
+            "Passport, Emirates ID and residence visa copies",
+            "Certified bank statements (6 months)",
+            "Tenancy contract / Ejari",
+            "Audited financial statements",
+        ],
+        "terms": [
+            "TRC issuance is subject to FTA approval and validity is one year.",
+            "All supporting documents must be valid and, where required, attested.",
+        ],
+    },
+    {
+        "key": "tp", "label": "Transfer Pricing / CbCR / ICV",
+        "exact": ["KGC-TP", "KGC-CBCR", "KGC-ICV"], "prefix": [],
+        "documents": [
+            "Group structure and ownership chart",
+            "Intercompany agreements and transaction details",
+            "Audited financial statements (group and entity)",
+            "Functional and segmented financial data",
+        ],
+        "terms": [
+            "Engagement is delivered in line with UAE / OECD transfer pricing and reporting rules.",
+            "Benchmarking and documentation are based on data and access provided by the client.",
+        ],
+    },
+    {
+        "key": "formation", "label": "Company Formation",
+        "exact": [], "prefix": ["MFZ-", "IFZA-", "DMCC-", "DWTC-", "DWC-", "RAKEZ-",
+                                 "AJM-", "ADFZ-", "DED-", "ADM-", "JAFZA-", "DAFZA-"],
+        "documents": [
+            "Passport copies of all shareholders",
+            "Passport-size photographs (white background)",
+            "Emirates ID / residence visa copy (if UAE resident)",
+            "Proof of address (utility bill / bank statement)",
+            "Three proposed trade names (in order of preference)",
+            "NOC from current sponsor (if on UAE employment visa)",
+            "Parent company documents (for corporate shareholders)",
+            "Brief business plan (for regulated / certain activities)",
+        ],
+        "terms": [
+            "Government and authority fees are subject to change without prior notice.",
+            "Timelines are subject to the relevant authority's approvals.",
+            "Regulated activities require external / government approval at additional cost.",
+            "Visa quota is subject to the selected office / facility package.",
+            "Trade name approval is subject to availability and authority guidelines.",
+            "Service fees are subject to 5% VAT; government fees are pass-through at actuals.",
+        ],
+    },
+]
+
+
+@frappe.whitelist()
+def get_engagement_sections(item_codes):
+    """Return matched engagement groups (documents + terms) for given line codes."""
+    if isinstance(item_codes, str):
+        item_codes = json.loads(item_codes)
+    codes = [c for c in (item_codes or []) if c]
+    out = []
+    for g in ENGAGEMENT:
+        hit = any(c in g["exact"] for c in codes) or \
+              any(c.startswith(p) for c in codes for p in g["prefix"])
+        if hit:
+            out.append({"label": g["label"], "documents": g["documents"], "terms": g["terms"]})
+    return out
+
+
+# ── Service-proposal content (KGC 4-page format) ───────────────────────
+# Accounting onboarding document checklist (category, required documents).
+_ACC_DOC_TABLE = [
+    ["Company Documents", "Trade Licence, MOA / AOA, VAT Certificate, Corporate Tax Registration Certificate, UBO details, ownership structure and regulatory approvals, if applicable."],
+    ["Banking Records", "Monthly bank statements, cheque copies, transfer confirmations, payment receipts, bank facility documents and loan correspondence, if applicable."],
+    ["Sales & Revenue", "Sales invoices, credit notes, customer contracts, customer ledgers, POS reports, payment gateway reports, e-commerce reports and revenue reconciliation details."],
+    ["Purchases & Expenses", "Supplier invoices, purchase orders, expense bills, petty cash records, reimbursement claims, supplier statements and supplier agreements."],
+    ["Payroll Records", "Salary sheets, WPS reports, employee contracts, employee master data, leave records, gratuity calculations and end-of-service records."],
+    ["Assets & Inventory", "Fixed asset register, depreciation schedule, asset purchase invoices, inventory reports, stock movement details and inventory valuation reports."],
+    ["VAT / Corporate Tax Records", "VAT returns, FTA correspondence, Corporate Tax registration details, prior submissions, tax payment receipts and tax authority notifications."],
+    ["Prior Accounting Records", "Prior financial statements, trial balance, general ledger, management reports, audit reports, opening balances and reconciliation schedules."],
+]
+for _g in ENGAGEMENT:
+    if _g["key"] in ("accounting", "accounting_vat"):
+        _g["doc_table"] = _ACC_DOC_TABLE
+
+# Four service pillars shown on the proposal cover.
+PROPOSAL_PILLARS = [
+    ("01", "Accounting", "Bookkeeping, reconciliations, financial reports and management accounts."),
+    ("02", "VAT Compliance", "VAT registration, return preparation, review and FTA compliance support."),
+    ("03", "Corporate Tax", "UAE Corporate Tax registration, filing support and compliance review."),
+    ("04", "Advisory", "Audit support, business advisory, document review and compliance guidance."),
+]
+PROPOSAL_FEATURES = [
+    ("Compliance Focused", "Structured support for UAE VAT, Corporate Tax, bookkeeping and audit readiness."),
+    ("Client-Centric Process", "Clear document requirements, defined scope and transparent commercial terms."),
+    ("Professional Delivery", "Practical accounting, tax and advisory support aligned with business requirements."),
+]
+PROPOSAL_ABOUT = ("provides professional accounting, bookkeeping, VAT, Corporate Tax, audit support and "
+                  "business advisory services to UAE-based businesses. Our approach is focused on accurate "
+                  "records, regulatory compliance, timely reporting and practical support for management decision-making.")
+PROPOSAL_TAGLINE = "Accounting | VAT | Corporate Tax | Audit Support | Business Advisory"
+
+ONBOARDING_STEPS = [
+    ("1. Document Collection", "Client provides records and access to relevant accounting, tax and bank documents."),
+    ("2. Initial Review", "KGC reviews completeness and identifies missing or unclear information."),
+    ("3. Execution", "Services are performed based on agreed scope and available documents."),
+    ("4. Delivery", "Final output, filing, report, or advisory conclusion is shared with the client."),
+]
+
+# Standard commercial terms (title, text) — page 4.
+STANDARD_TERMS = [
+    ("Proposal Validity", "This proposal remains valid until the validity date mentioned in the proposal, unless otherwise revised or withdrawn in writing."),
+    ("Payment Terms", "Full payment is required in advance unless otherwise agreed in writing. For monthly or recurring services, invoices shall be issued at the beginning of each month or service period."),
+    ("Turnaround Time", "Estimated completion timelines depend on the volume, complexity and completeness of records provided by the client."),
+    ("Client Responsibility", "The client shall provide complete, accurate and timely documents. We shall not be liable for penalties, delays or compliance issues arising from incomplete, inaccurate or delayed information."),
+    ("Tax Consultancy Exclusion", "Tax advisory, voluntary disclosure, reconsideration, tax assessment, complex VAT treatment, Corporate Tax position analysis and tax authority correspondence are excluded unless specifically mentioned in the scope."),
+    ("Out-of-Scope Services", "Any additional work outside this proposal, including historical backlog, audit support, bank KYC response, regulatory clarification, or urgent filing, shall be billed separately after client confirmation."),
+    ("Government Fees and Penalties", "Government fees, penalties, portal charges, bank charges and third-party costs are excluded unless expressly mentioned."),
+    ("Confidentiality", "We shall maintain confidentiality of client information and documents, except where disclosure is required by law, regulation or competent authority."),
+    ("Limitation of Liability", "Our responsibility is limited to the professional services expressly agreed in this proposal and shall not extend to indirect losses, consequential damages or matters outside the approved scope."),
+    ("Acceptance", "Signing this proposal, confirming by email, or making payment shall be deemed acceptance of the scope, pricing and terms stated herein."),
+]
