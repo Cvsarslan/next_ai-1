@@ -862,15 +862,49 @@ def get_team_directory():
 
 
 @frappe.whitelist()
-def broadcast_to_team(subject, message=None):
-    """Send an in-system notification to every active team member."""
+def broadcast_to_team(subject, message=None, recipients=None, role=None, priority="Normal"):
+    """Send an in-system notification to selected active team members."""
     if frappe.session.user in ("Guest", None, ""):
         frappe.throw("You must be signed in.")
     subject = cstr(subject).strip()
     if not subject:
         frappe.throw("Subject is required.")
-    users = frappe.get_all("User", filters={"enabled": 1, "user_type": "System User",
-                           "name": ["not in", ["Administrator", "Guest"]]}, pluck="name")
+    priority = cstr(priority or "Normal").strip()
+    if priority not in ("Normal", "Important", "Urgent"):
+        priority = "Normal"
+
+    selected = []
+    if recipients:
+        try:
+            selected = json.loads(recipients) if isinstance(recipients, str) else recipients
+        except Exception:
+            selected = []
+        selected = [cstr(u).strip() for u in selected if cstr(u).strip()]
+
+    filters = {
+        "enabled": 1,
+        "user_type": "System User",
+        "name": ["not in", ["Administrator", "Guest"]],
+    }
+    if selected:
+        filters["name"] = ["in", selected]
+
+    users = frappe.get_all("User", filters=filters, pluck="name")
+    role = cstr(role or "").strip()
+    if role:
+        role_users = set(frappe.get_all(
+            "Has Role",
+            filters={"role": role, "parenttype": "User", "parent": ["in", users or [""]]},
+            pluck="parent",
+        ))
+        users = [u for u in users if u in role_users]
+
+    users = [u for u in users if u != frappe.session.user]
+    if not users:
+        frappe.throw("No active team members match this audience.")
+
+    badge = {"Normal": "", "Important": "Important: ", "Urgent": "Urgent: "}[priority]
+    subject = badge + subject
     sent = 0
     for u in users:
         try:
@@ -1576,7 +1610,7 @@ def create_supplier(supplier_name, supplier_type="Company", supplier_group=None,
 @frappe.whitelist()
 def create_payment_entry(payment_type, party_type, party, posting_date,
                          paid_amount, paid_from, paid_to, mode_of_payment="Cash",
-                         company=None, reference_no=None, remarks=None):
+                         company=None, reference_no=None, reference_date=None, remarks=None):
     try:
         if not company:
             company = _get_company()
@@ -1608,7 +1642,7 @@ def create_payment_entry(payment_type, party_type, party, posting_date,
         })
         if reference_no:
             doc.reference_no = reference_no
-            doc.reference_date = posting_date or nowdate()
+            doc.reference_date = reference_date or posting_date or nowdate()
         if remarks:
             doc.remarks = remarks
 
@@ -1643,7 +1677,8 @@ def _default_bank_cash_account(company, mode_of_payment=None):
 
 @frappe.whitelist()
 def record_party_payment(party_type, party, paid_amount, posting_date=None,
-                         mode_of_payment="Cash", reference_no=None, company=None):
+                         mode_of_payment="Cash", reference_no=None, reference_date=None,
+                         company=None, bank_account=None):
     """Simplified on-account payment: Customer → Receive, Supplier → Pay.
     Bank/cash and party accounts are resolved automatically."""
     try:
@@ -1657,7 +1692,9 @@ def record_party_payment(party_type, party, paid_amount, posting_date=None,
 
         from erpnext.accounts.party import get_party_account
         party_account = get_party_account(party_type, party, company)
-        bank = _default_bank_cash_account(company, mode_of_payment)
+        bank = cstr(bank_account) if bank_account else _default_bank_cash_account(company, mode_of_payment)
+        if bank and not frappe.db.exists("Account", {"name": bank, "company": company, "is_group": 0}):
+            frappe.throw("Please select a valid bank or cash account.")
         if not party_account or not bank:
             frappe.throw("Could not resolve the bank/cash or party account. Set up a Bank or Cash account first.")
 
@@ -1668,12 +1705,65 @@ def record_party_payment(party_type, party, paid_amount, posting_date=None,
         return create_payment_entry(payment_type, party_type, party, posting_date,
                                     paid_amount, paid_from, paid_to,
                                     mode_of_payment=mode_of_payment, company=company,
-                                    reference_no=reference_no)
+                                    reference_no=reference_no, reference_date=reference_date)
     except frappe.ValidationError:
         raise
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: record_party_payment")
         frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_supplier_outstanding_bills(supplier, company=None):
+    try:
+        if not company:
+            company = _get_company()
+        return frappe.db.sql("""
+            SELECT name, supplier, supplier_name, bill_no, posting_date, due_date,
+                   currency, grand_total, outstanding_amount, status
+            FROM `tabPurchase Invoice`
+            WHERE docstatus = 1
+              AND outstanding_amount > 0
+              AND supplier = %(supplier)s
+              AND company = %(company)s
+            ORDER BY
+              CASE WHEN due_date IS NOT NULL AND due_date < %(today)s THEN 0 ELSE 1 END,
+              due_date ASC,
+              posting_date ASC
+        """, {"supplier": supplier, "company": company, "today": nowdate()}, as_dict=True)
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_supplier_outstanding_bills")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def create_purchase_invoice_payment(purchase_invoice, amount, posting_date=None, reference_no=None,
+                                    reference_date=None, mode_of_payment="Cash", bank_account=None):
+    from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+    source = frappe.get_doc("Purchase Invoice", purchase_invoice)
+    if source.docstatus != 1 or flt(source.outstanding_amount) <= 0:
+        frappe.throw("Purchase Invoice must be submitted with an outstanding amount.")
+    amount = flt(amount)
+    if amount <= 0 or amount > flt(source.outstanding_amount):
+        frappe.throw("Payment must be greater than zero and cannot exceed the outstanding amount.")
+    target = get_payment_entry(
+        "Purchase Invoice", source.name, party_amount=amount,
+        reference_date=posting_date or nowdate(), ignore_permissions=True,
+    )
+    target.posting_date = posting_date or nowdate()
+    target.paid_amount = amount
+    target.received_amount = amount
+    target.mode_of_payment = mode_of_payment
+    if bank_account:
+        if not frappe.db.exists("Account", {"name": bank_account, "company": source.company, "is_group": 0}):
+            frappe.throw("Please select a valid bank or cash account.")
+        target.paid_from = bank_account
+    target.reference_no = reference_no or f"PAY-{source.name}-{posting_date or nowdate()}"
+    target.reference_date = reference_date or posting_date or nowdate()
+    target.flags.ignore_permissions = True
+    target.insert(ignore_permissions=True)
+    return {"name": target.name, "doctype": target.doctype, "status": "Draft", "grand_total": amount}
 
 
 @frappe.whitelist()
@@ -1751,7 +1841,12 @@ def create_sales_order(customer, delivery_date, items, company=None, remarks=Non
         doc.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
         doc.submit()
-        return {"name": doc.name, "grand_total": doc.grand_total, "status": doc.status}
+        # Auto-create project + tasks for items configured for it (idempotent;
+        # the Sales Order on_submit hook may have already done this).
+        make_projects_from_sales_order(doc)
+        projects = frappe.get_all("Project", filters={"sales_order": doc.name}, pluck="name")
+        return {"name": doc.name, "grand_total": doc.grand_total, "status": doc.status,
+                "projects_created": projects}
     except frappe.ValidationError as e:
         frappe.throw(str(e))
     except Exception as e:
@@ -2019,26 +2114,159 @@ def create_purchase_order(supplier, transaction_date, items, company=None, sched
         frappe.throw(str(e))
 
 
+# Default depreciation policy (Straight Line):
+#   • Motor vehicles → 10% per year for 10 years
+#   • All other categories → 20% per year for 5 years
+def _depreciation_policy(category_name):
+    n = (category_name or "").lower()
+    if any(k in n for k in ("motor", "vehicle", "car", "truck", "van")):
+        return {"years": 10, "rate": 10}
+    return {"years": 5, "rate": 20}
+
+
+def _resolve_depreciation_accounts(company):
+    """Best-effort lookup of the three accounts an Asset Category needs to depreciate."""
+    comp = frappe.get_doc("Company", company)
+
+    def first_account(account_type=None, like=None, root_type=None):
+        filters = {"company": company, "is_group": 0}
+        if account_type:
+            filters["account_type"] = account_type
+        if root_type:
+            filters["root_type"] = root_type
+        rows = frappe.get_all("Account", filters=filters,
+                              or_filters=({"account_name": ["like", like]} if like else None),
+                              pluck="name", limit=1)
+        return rows[0] if rows else None
+
+    fixed_asset = first_account(account_type="Fixed Asset")
+    accumulated = comp.get("accumulated_depreciation_account") or \
+        first_account(account_type="Accumulated Depreciation") or \
+        first_account(like="%Depreciation%", root_type="Asset")
+    expense = comp.get("depreciation_expense_account") or \
+        first_account(like="%Depreciation%", root_type="Expense")
+
+    if fixed_asset and accumulated and expense:
+        return {"fixed_asset_account": fixed_asset,
+                "accumulated_depreciation_account": accumulated,
+                "depreciation_expense_account": expense}
+    return None
+
+
+def _ensure_asset_category(category_name, company):
+    """Create the Asset Category if missing, configured with the standard depreciation
+    schedule + the company's depreciation accounts. Returns True if depreciation is set up."""
+    pol = _depreciation_policy(category_name)
+    accounts = _resolve_depreciation_accounts(company)
+
+    if frappe.db.exists("Asset Category", category_name):
+        cat = frappe.get_doc("Asset Category", category_name)
+        # Backfill depreciation config if a previously-created category lacks it.
+        changed = False
+        if accounts and not cat.finance_books:
+            cat.append("finance_books", {
+                "depreciation_method": "Straight Line",
+                "total_number_of_depreciations": pol["years"],
+                "frequency_of_depreciation": 12,
+                "rate_of_depreciation": pol["rate"],
+            })
+            changed = True
+        if accounts and not any(a.company_name == company for a in cat.accounts):
+            cat.append("accounts", {"company_name": company, **accounts})
+            changed = True
+        if changed:
+            cat.flags.ignore_permissions = True
+            cat.save(ignore_permissions=True)
+        return bool(cat.finance_books and cat.accounts)
+
+    cat = frappe.get_doc({
+        "doctype": "Asset Category",
+        "asset_category_name": category_name,
+    })
+    if accounts:
+        cat.append("finance_books", {
+            "depreciation_method": "Straight Line",
+            "total_number_of_depreciations": pol["years"],
+            "frequency_of_depreciation": 12,
+            "rate_of_depreciation": pol["rate"],
+        })
+        cat.append("accounts", {"company_name": company, **accounts})
+    cat.flags.ignore_permissions = True
+    cat.insert(ignore_permissions=True)
+    return bool(accounts)
+
+
+def _ensure_asset_item(category_name, company):
+    """Ensure a fixed-asset Item exists for this category (ERPNext requires every Asset
+    to link to an Item). Sets an asset naming series so each Asset gets a proper number."""
+    item_code = f"Asset - {category_name}"
+    if frappe.db.exists("Item", item_code):
+        return item_code
+    item_group = frappe.db.get_value("Item Group", {"is_group": 0}, "name") \
+        or frappe.db.get_value("Item Group", {"name": "All Item Groups"}, "name")
+    item = frappe.get_doc({
+        "doctype": "Item",
+        "item_code": item_code,
+        "item_name": category_name,
+        "item_group": item_group,
+        "is_fixed_asset": 1,
+        "is_stock_item": 0,
+        "asset_category": category_name,
+        "asset_naming_series": "ACC-ASS-.YYYY.-",
+    })
+    item.flags.ignore_permissions = True
+    item.insert(ignore_permissions=True)
+    return item_code
+
+
 @frappe.whitelist()
 def create_asset(asset_name, asset_category, purchase_date, gross_purchase_amount, company=None,
                  available_for_use_date=None, location=None, custodian=None):
     try:
         if not company:
             company = _get_company()
+        avail = available_for_use_date or purchase_date
+        # Auto-create the category (with depreciation schedule) if it doesn't exist yet.
+        can_depreciate = _ensure_asset_category(asset_category, company) if asset_category else False
+        # Every Asset must link to a fixed-asset Item — provision one per category.
+        item_code = _ensure_asset_item(asset_category, company) if asset_category else None
+
         doc = frappe.get_doc({
             "doctype": "Asset",
             "asset_name": asset_name,
+            "item_code": item_code,
             "asset_category": asset_category,
             "company": company,
             "purchase_date": purchase_date,
-            "available_for_use_date": available_for_use_date or purchase_date,
+            "available_for_use_date": avail,
             "gross_purchase_amount": flt(gross_purchase_amount),
             "location": location,
             "custodian": custodian,
         })
+        if can_depreciate:
+            # Enable automatic depreciation — ERPNext copies the category's finance
+            # books and its daily scheduler posts the depreciation entries.
+            doc.calculate_depreciation = 1
+            doc.append("finance_books", {
+                "depreciation_method": "Straight Line",
+                "total_number_of_depreciations": _depreciation_policy(asset_category)["years"],
+                "frequency_of_depreciation": 12,
+                "rate_of_depreciation": _depreciation_policy(asset_category)["rate"],
+                "depreciation_start_date": avail,
+            })
         doc.flags.ignore_permissions = True
         doc.insert(ignore_permissions=True)
-        return {"name": doc.name, "asset_name": doc.asset_name}
+
+        # Submit so the depreciation schedule is generated; keep the draft on failure.
+        submitted = False
+        if can_depreciate:
+            try:
+                doc.submit()
+                submitted = True
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Portal: Asset submit (depreciation)")
+        return {"name": doc.name, "asset_name": doc.asset_name,
+                "depreciation": can_depreciate, "submitted": submitted}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Portal: Create Asset")
         frappe.throw(str(e))
@@ -4156,6 +4384,315 @@ def get_asset_categories():
     except Exception:
         return []
 
+
+def _clean_boarding_activities(activities):
+    if isinstance(activities, str):
+        activities = json.loads(activities or "[]")
+    out = []
+    for row in activities or []:
+        activity_name = cstr(row.get("activity_name")).strip()
+        if not activity_name:
+            continue
+        role = cstr(row.get("role")).strip()
+        user = cstr(row.get("user")).strip()
+        out.append({
+            "activity_name": activity_name,
+            "role": role if role and frappe.db.exists("Role", role) else None,
+            "user": user if user and frappe.db.exists("User", user) else None,
+            "required_for_employee_creation": cint(row.get("required_for_employee_creation", 1)),
+            "description": row.get("description") or "",
+            "task_weight": flt(row.get("task_weight") or 0),
+            "begin_on": cint(row.get("begin_on") or 0),
+            "duration": cint(row.get("duration") or 1),
+        })
+    return out
+
+
+@frappe.whitelist()
+def get_employee_assets(employee):
+    try:
+        return frappe.db.sql("""
+            SELECT a.name, a.asset_name, a.asset_category, a.status, a.location, a.custodian,
+                   a.purchase_date, a.gross_purchase_amount,
+                   a.value_after_depreciation AS net_asset_value
+            FROM `tabAsset` a
+            WHERE a.docstatus < 2 AND a.custodian = %(employee)s
+            ORDER BY a.asset_name
+        """, {"employee": employee}, as_dict=True)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_employee_assets")
+        return []
+
+
+@frappe.whitelist()
+def get_onboarding_data():
+    try:
+        templates = frappe.db.sql("""
+            SELECT t.name, t.title, t.company, t.department, t.designation,
+                   COUNT(a.name) AS activity_count
+            FROM `tabEmployee Onboarding Template` t
+            LEFT JOIN `tabEmployee Boarding Activity` a
+                ON a.parent=t.name AND a.parenttype='Employee Onboarding Template'
+            WHERE t.docstatus < 2
+            GROUP BY t.name
+            ORDER BY t.modified DESC
+            LIMIT 100
+        """, as_dict=True)
+    except Exception:
+        templates = []
+    try:
+        onboardings = frappe.get_all(
+            "Employee Onboarding",
+            fields=["name", "employee", "employee_name", "employee_onboarding_template",
+                    "date_of_joining", "boarding_begins_on", "boarding_status", "docstatus"],
+            filters={"docstatus": ["<", 2]},
+            order_by="modified desc",
+            limit=100,
+        )
+    except Exception:
+        onboardings = []
+    employees = get_employees(status="Active")
+    assigned_assets = frappe.db.sql("""
+        SELECT a.name, a.asset_name, a.asset_category, a.location, a.custodian,
+               e.employee_name, a.value_after_depreciation AS net_asset_value
+        FROM `tabAsset` a
+        LEFT JOIN `tabEmployee` e ON e.name = a.custodian
+        WHERE a.docstatus < 2 AND IFNULL(a.custodian, '') != ''
+        ORDER BY a.modified DESC
+        LIMIT 100
+    """, as_dict=True)
+    return {"templates": templates, "onboardings": onboardings,
+            "employees": employees, "assigned_assets": assigned_assets}
+
+
+@frappe.whitelist()
+def create_onboarding_template(title, department=None, designation=None, company=None, activities=None):
+    try:
+        company = company or _get_company()
+        doc = frappe.get_doc({
+            "doctype": "Employee Onboarding Template",
+            "title": title,
+            "company": company,
+        })
+        if department and frappe.db.exists("Department", department):
+            doc.department = department
+        if designation and frappe.db.exists("Designation", designation):
+            doc.designation = designation
+        for row in _clean_boarding_activities(activities):
+            doc.append("activities", row)
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True)
+        return {"name": doc.name, "title": doc.title, "activity_count": len(doc.activities)}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_onboarding_template")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def assign_employee_onboarding(employee, template, boarding_begins_on=None, notify=0):
+    try:
+        emp = frappe.get_value(
+            "Employee", employee,
+            ["name", "employee_name", "company", "department", "designation", "date_of_joining"],
+            as_dict=True,
+        )
+        if not emp:
+            frappe.throw(f"Employee {employee} not found.")
+        tpl = frappe.get_doc("Employee Onboarding Template", template)
+        doc = frappe.get_doc({
+            "doctype": "Employee Onboarding",
+            "employee": emp.name,
+            "employee_name": emp.employee_name,
+            "employee_onboarding_template": template,
+            "company": emp.company or tpl.company or _get_company(),
+            "department": emp.department or tpl.department,
+            "designation": emp.designation or tpl.designation,
+            "date_of_joining": emp.date_of_joining or boarding_begins_on or nowdate(),
+            "boarding_begins_on": boarding_begins_on or emp.date_of_joining or nowdate(),
+            "boarding_status": "Pending",
+            "notify_users_by_email": cint(notify),
+        })
+        for a in tpl.get("activities", []):
+            doc.append("activities", {
+                "activity_name": a.activity_name,
+                "role": a.role,
+                "user": a.user,
+                "required_for_employee_creation": a.required_for_employee_creation,
+                "description": a.description,
+                "task_weight": a.task_weight,
+                "begin_on": a.begin_on,
+                "duration": a.duration,
+            })
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True, ignore_mandatory=True)
+        return {"name": doc.name, "employee": doc.employee, "employee_name": doc.employee_name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: assign_employee_onboarding")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_asset_assignment_form(asset_name):
+    try:
+        asset = frappe.db.sql("""
+            SELECT a.name, a.asset_name, a.asset_category, a.company, a.status,
+                   a.purchase_date, a.gross_purchase_amount, a.location, a.custodian,
+                   GREATEST(a.gross_purchase_amount - a.value_after_depreciation, 0)
+                       AS accumulated_depreciation_amount,
+                   a.value_after_depreciation AS net_asset_value
+            FROM `tabAsset` a
+            WHERE a.name=%(asset)s
+            LIMIT 1
+        """, {"asset": asset_name}, as_dict=True)
+        if not asset:
+            frappe.throw(f"Asset {asset_name} not found.")
+        asset = asset[0]
+        employee = {}
+        if asset.custodian:
+            employee = frappe.get_value(
+                "Employee", asset.custodian,
+                ["name", "employee_name", "department", "designation", "company_email", "cell_number"],
+                as_dict=True,
+            ) or {}
+        company = frappe.get_value("Company", asset.company or _get_company(),
+                                   ["name", "company_name", "email", "phone_no"], as_dict=True) or {}
+        return {"asset": asset, "employee": employee, "company": company, "issue_date": nowdate()}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_asset_assignment_form")
+        frappe.throw(str(e))
+
+
+def _ensure_location(location_name):
+    location_name = cstr(location_name).strip()
+    if not location_name:
+        return None
+    if frappe.db.exists("Location", location_name):
+        return location_name
+    existing = frappe.db.get_value("Location", {"location_name": location_name}, "name")
+    if existing:
+        return existing
+    doc = frappe.get_doc({"doctype": "Location", "location_name": location_name})
+    doc.flags.ignore_permissions = True
+    doc.insert(ignore_permissions=True)
+    return doc.name
+
+
+@frappe.whitelist()
+def move_asset_custody(asset_name, mode, from_employee=None, to_employee=None,
+                       target_location=None, transaction_date=None, notes=None):
+    try:
+        asset = frappe.get_value("Asset", asset_name,
+                                 ["name", "asset_name", "company", "location", "custodian"], as_dict=True)
+        if not asset:
+            frappe.throw(f"Asset {asset_name} not found.")
+        mode = cstr(mode).lower()
+        transaction_date = transaction_date or nowdate()
+        if mode == "return":
+            purpose = "Receipt"
+            if not from_employee:
+                from_employee = asset.custodian
+            target_location = _ensure_location(target_location or asset.location or "IT Store")
+            item = {
+                "asset": asset.name,
+                "asset_name": asset.asset_name,
+                "source_location": asset.location,
+                "target_location": target_location,
+                "from_employee": from_employee,
+                "company": asset.company or _get_company(),
+            }
+        else:
+            purpose = "Issue"
+            if not to_employee:
+                frappe.throw("Employee receiving the asset is required.")
+            item = {
+                "asset": asset.name,
+                "asset_name": asset.asset_name,
+                "source_location": asset.location,
+                "target_location": _ensure_location(target_location) if target_location else None,
+                "from_employee": from_employee or asset.custodian,
+                "to_employee": to_employee,
+                "company": asset.company or _get_company(),
+            }
+        doc = frappe.get_doc({
+            "doctype": "Asset Movement",
+            "company": asset.company or _get_company(),
+            "purpose": purpose,
+            "transaction_date": transaction_date,
+            "assets": [item],
+        })
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True)
+        doc.submit()
+        return {"name": doc.name, "purpose": doc.purpose, "asset": asset.name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: move_asset_custody")
+        frappe.throw(str(e))
+
+@frappe.whitelist()
+def enable_asset_depreciation(asset_name=None):
+    """Turn on the standard depreciation schedule for existing assets that don't have one.
+
+    Submitted assets are amended (cancel → re-submit) so ERPNext generates the schedule.
+    Pass an asset name to process one, or omit to backfill every eligible asset."""
+    try:
+        company = _get_company()
+        if asset_name:
+            targets = [asset_name]
+        else:
+            targets = frappe.get_all("Asset",
+                filters={"docstatus": ["<", 2], "calculate_depreciation": 0},
+                pluck="name")
+
+        done, skipped, errors = [], [], []
+        for nm in targets:
+            try:
+                doc = frappe.get_doc("Asset", nm)
+                if doc.calculate_depreciation:
+                    skipped.append(nm)
+                    continue
+                # Make sure the category carries depreciation accounts + policy.
+                if not _ensure_asset_category(doc.asset_category, company):
+                    errors.append({"asset": nm, "error": "No depreciation accounts configured for company."})
+                    continue
+                pol = _depreciation_policy(doc.asset_category)
+
+                def _configure(target):
+                    target.calculate_depreciation = 1
+                    target.set("finance_books", [])
+                    target.append("finance_books", {
+                        "depreciation_method": "Straight Line",
+                        "total_number_of_depreciations": pol["years"],
+                        "frequency_of_depreciation": 12,
+                        "rate_of_depreciation": pol["rate"],
+                        "depreciation_start_date": target.available_for_use_date or target.purchase_date,
+                    })
+                    target.flags.ignore_permissions = True
+
+                if doc.docstatus == 1:
+                    doc.flags.ignore_permissions = True
+                    doc.cancel()
+                    amended = frappe.copy_doc(doc)
+                    amended.amended_from = doc.name
+                    amended.docstatus = 0
+                    _configure(amended)
+                    amended.insert(ignore_permissions=True)
+                    amended.submit()
+                    done.append(amended.name)
+                else:
+                    _configure(doc)
+                    doc.save(ignore_permissions=True)
+                    doc.submit()
+                    done.append(doc.name)
+            except Exception as ie:
+                errors.append({"asset": nm, "error": str(ie)})
+        frappe.db.commit()
+        return {"done": done, "done_count": len(done),
+                "skipped_count": len(skipped), "errors": errors, "error_count": len(errors)}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: enable_asset_depreciation")
+        frappe.throw(str(e))
+
+
 @frappe.whitelist()
 def get_asset_depreciation_schedule(asset_name):
     try:
@@ -4259,12 +4796,51 @@ def get_stock_items(search=None, item_group=None, low_stock=0, company=None):
     """, params, as_dict=True)
 
 
+# ── Item → Project automation custom fields ──
+def _ensure_item_project_fields():
+    """Idempotently add the Item fields that drive auto project/task creation."""
+    if frappe.db.exists("Custom Field", "Item-custom_auto_create_project"):
+        return
+    from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+    create_custom_fields({
+        "Item": [
+            {"fieldname": "custom_project_section", "label": "Project Automation",
+             "fieldtype": "Section Break", "insert_after": "description", "collapsible": 1},
+            {"fieldname": "custom_auto_create_project", "label": "Auto-create Project & Tasks on Sales Order",
+             "fieldtype": "Check", "insert_after": "custom_project_section"},
+            {"fieldname": "custom_project_template", "label": "Project Template",
+             "fieldtype": "Link", "options": "Project Template",
+             "insert_after": "custom_auto_create_project",
+             "depends_on": "eval:doc.custom_auto_create_project",
+             "mandatory_depends_on": "eval:doc.custom_auto_create_project"},
+        ]
+    }, ignore_validate=True)
+    frappe.db.commit()
+
+
+@frappe.whitelist()
+def setup_item_project_fields():
+    _ensure_item_project_fields()
+    return {"ok": True}
+
+
+@frappe.whitelist()
+def get_project_templates():
+    try:
+        return frappe.get_all("Project Template", fields=["name"], order_by="name", limit=100)
+    except Exception:
+        return []
+
+
 @frappe.whitelist(methods=["POST"])
 def create_stock_item(item_code, item_name, item_group, stock_uom,
-                      valuation_rate=0, safety_stock=0, description=None):
+                      valuation_rate=0, safety_stock=0, description=None,
+                      project_template=None, auto_create_project=0):
     _require_stock_permission("create")
     if frappe.db.exists("Item", item_code):
         frappe.throw(f"Item {item_code} already exists.")
+    _ensure_item_project_fields()
+    auto = int(auto_create_project or 0)
     doc = frappe.get_doc({
         "doctype": "Item",
         "item_code": cstr(item_code).strip(),
@@ -4277,9 +4853,54 @@ def create_stock_item(item_code, item_name, item_group, stock_uom,
         "valuation_rate": flt(valuation_rate),
         "safety_stock": flt(safety_stock),
         "description": description or item_name,
+        "custom_auto_create_project": auto,
+        "custom_project_template": project_template if auto else None,
     })
     doc.insert()
     return {"name": doc.name, "item_name": doc.item_name}
+
+
+def make_projects_from_sales_order(doc, method=None):
+    """For each Sales Order item whose Item has auto-create enabled + a Project Template,
+    create a Project (which auto-generates the template's tasks). Idempotent per SO+template.
+    Used both directly after portal SO creation and as a Sales Order doc_event."""
+    try:
+        if isinstance(doc, str):
+            doc = frappe.get_doc("Sales Order", doc)
+        _ensure_item_project_fields()
+        created, seen = [], set()
+        for it in doc.items:
+            cfg = frappe.db.get_value("Item", it.item_code,
+                ["custom_auto_create_project", "custom_project_template"], as_dict=True)
+            if not cfg or not cfg.custom_auto_create_project or not cfg.custom_project_template:
+                continue
+            tmpl = cfg.custom_project_template
+            if tmpl in seen:
+                continue
+            seen.add(tmpl)
+            pname = f"{doc.name} · {tmpl}"
+            if frappe.db.exists("Project", {"project_name": pname}):
+                continue
+            proj = frappe.get_doc({
+                "doctype": "Project",
+                "project_name": pname,
+                "project_template": tmpl,
+                "customer": doc.customer,
+                "company": doc.company,
+                "sales_order": doc.name,
+                "expected_start_date": nowdate(),
+            })
+            proj.flags.ignore_permissions = True
+            proj.insert(ignore_permissions=True)
+            # Tasks are copied from the template on the next save (ERPNext guards the first insert).
+            proj.save(ignore_permissions=True)
+            created.append(proj.name)
+        if created:
+            frappe.db.commit()
+        return created
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Portal: make_projects_from_sales_order")
+        return []
 
 
 @frappe.whitelist()
@@ -4325,6 +4946,69 @@ def _portal_fx(base, target, on_date):
         return flt(get_exchange_rate(base, target, on_date)) or 1.0
     except Exception:
         return 1.0
+
+
+def _cbuae_aed_rate(currency):
+    """AED value for 1 unit of currency from UAE Central Bank feed."""
+    currency = cstr(currency).upper()
+    if currency == "AED":
+        return 1.0
+    try:
+        import requests
+        resp = requests.get(
+            "https://www.centralbank.ae/umbraco/Surface/Exchange/GetExchangeRateAllCurrencies",
+            timeout=8,
+        )
+        resp.raise_for_status()
+        rows = resp.json() or []
+        for row in rows:
+            code = cstr(row.get("CurrencyCode") or row.get("currencyCode")).upper()
+            if code == currency:
+                raw = flt(row.get("Rate") or row.get("rateValue") or row.get("rate"))
+                return raw / 100 if raw > 20 else raw
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Portal: CBUAE exchange rate")
+    return None
+
+
+@frappe.whitelist()
+def get_uae_central_bank_exchange_rate(currency, target_currency=None, transaction_date=None, company=None):
+    """Return conversion rate for 1 `currency` into `target_currency`.
+
+    CBUAE publishes AED rates; non-AED cross rates are derived through AED.
+    Falls back to ERPNext's configured exchange-rate utility when the live feed
+    is unavailable.
+    """
+    try:
+        if not company:
+            company = _get_company()
+        source = cstr(currency or "AED").upper()
+        target = cstr(target_currency or frappe.get_value("Company", company, "default_currency") or "AED").upper()
+        on_date = transaction_date or nowdate()
+        if source == target:
+            return {"rate": 1.0, "source": "Company Currency", "as_of": on_date}
+
+        rate = None
+        source_name = "UAE Central Bank"
+        if target == "AED":
+            rate = _cbuae_aed_rate(source)
+        elif source == "AED":
+            target_aed = _cbuae_aed_rate(target)
+            rate = (1 / target_aed) if target_aed else None
+        else:
+            source_aed = _cbuae_aed_rate(source)
+            target_aed = _cbuae_aed_rate(target)
+            rate = (source_aed / target_aed) if source_aed and target_aed else None
+
+        if not rate:
+            rate = _portal_fx(source, target, on_date)
+            source_name = "ERPNext Exchange Rate"
+
+        return {"rate": flt(rate) or 1.0, "source": source_name, "as_of": on_date,
+                "currency": source, "target_currency": target}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_uae_central_bank_exchange_rate")
+        frappe.throw(str(e))
 
 
 @frappe.whitelist()
@@ -5718,3 +6402,1230 @@ def update_user_profile(**kwargs):
     doc.save(ignore_permissions=True)
     frappe.db.commit()
     return get_user_profile()
+
+
+# ══════════════════════════════════════════════════════════════════
+#  LEAVE POLICY · BULK ASSIGNMENT · UAE LABOUR LAW · PROBATION ACCRUAL
+# ══════════════════════════════════════════════════════════════════
+
+# UAE Federal Decree-Law No. 33 of 2021 statutory leave entitlements.
+# UAE sick leave (after probation) is capped at 90 days/year but paid in tiers:
+#   first 15 days full pay · next 30 days half pay · final 45 days unpaid.
+# ERPNext models pay per leave type, so the 90 days are split into three tiers
+# using `fraction` (fraction of daily salary paid) and `lwp` (leave without pay).
+UAE_LEAVE_TYPES = [
+    {"name": "Annual Leave",            "max": 30, "carry": 1, "lwp": 0},
+    {"name": "Sick Leave (Full Pay)",   "max": 15, "carry": 0, "lwp": 0, "fraction": 1.0},
+    {"name": "Sick Leave (Half Pay)",   "max": 30, "carry": 0, "lwp": 0, "fraction": 0.5},
+    {"name": "Sick Leave (Unpaid)",     "max": 45, "carry": 0, "lwp": 1, "fraction": 0.0},
+    {"name": "Maternity Leave",         "max": 60, "carry": 0, "lwp": 0},
+    {"name": "Parental Leave",          "max": 5,  "carry": 0, "lwp": 0},
+    {"name": "Bereavement Leave",       "max": 5,  "carry": 0, "lwp": 0},
+    {"name": "Hajj Leave",              "max": 30, "carry": 0, "lwp": 1},
+    {"name": "Study Leave",             "max": 10, "carry": 0, "lwp": 0},
+]
+UAE_POLICY_TITLE = "UAE Labour Law Policy"
+
+
+def _ensure_leave_type(name, max_leaves=0, carry=0, lwp=0, fraction=None):
+    if frappe.db.exists("Leave Type", name):
+        # Raise the cap if an existing type allows fewer days than we want to allocate,
+        # otherwise Leave Policy validation rejects the allocation.
+        if max_leaves:
+            cur = flt(frappe.db.get_value("Leave Type", name, "max_leaves_allowed"))
+            if cur and cur < max_leaves:
+                frappe.db.set_value("Leave Type", name, "max_leaves_allowed", max_leaves)
+        return name
+    lt = frappe.get_doc({
+        "doctype": "Leave Type",
+        "leave_type_name": name,
+        "max_leaves_allowed": max_leaves,
+        "is_carry_forward": carry,
+        "is_lwp": lwp,
+        "include_holiday": 0,
+    })
+    if fraction is not None and not lwp:
+        lt.fraction_of_daily_salary_per_leave = fraction
+    lt.flags.ignore_permissions = True
+    lt.insert(ignore_permissions=True)
+    return lt.name
+
+
+@frappe.whitelist()
+def setup_uae_leave_policy():
+    """Create the UAE statutory leave types and a ready-to-assign Leave Policy."""
+    try:
+        for t in UAE_LEAVE_TYPES:
+            _ensure_leave_type(t["name"], t["max"], t["carry"], t["lwp"], t.get("fraction"))
+
+        if frappe.db.exists("Leave Policy", {"title": UAE_POLICY_TITLE}):
+            name = frappe.db.get_value("Leave Policy", {"title": UAE_POLICY_TITLE}, "name")
+            return {"name": name, "created": False, "message": "UAE policy already exists."}
+
+        policy = frappe.get_doc({
+            "doctype": "Leave Policy",
+            "title": UAE_POLICY_TITLE,
+            "leave_policy_details": [
+                {"leave_type": t["name"], "annual_allocation": t["max"]}
+                for t in UAE_LEAVE_TYPES
+            ],
+        })
+        policy.flags.ignore_permissions = True
+        policy.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {"name": policy.name, "created": True, "message": "UAE Labour Law policy created."}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: setup_uae_leave_policy")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_leave_policies():
+    """Return all leave policies with their per-type allocation details."""
+    try:
+        policies = frappe.get_all("Leave Policy", fields=["name", "title"],
+                                  order_by="modified desc", limit=100)
+        for p in policies:
+            details = frappe.get_all("Leave Policy Detail",
+                filters={"parent": p["name"]},
+                fields=["leave_type", "annual_allocation"], order_by="idx")
+            p["details"] = details
+            p["total_allocation"] = sum(flt(d["annual_allocation"]) for d in details)
+            p["assigned_count"] = frappe.db.count("Leave Policy Assignment",
+                {"leave_policy": p["name"], "docstatus": 1})
+        return policies
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_leave_policies")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def create_leave_policy(title, details):
+    """Create a custom leave policy. `details` = JSON list of {leave_type, annual_allocation}."""
+    import json
+    try:
+        rows = json.loads(details) if isinstance(details, str) else details
+        if not title or not rows:
+            frappe.throw("Title and at least one leave type are required.")
+        for r in rows:
+            _ensure_leave_type(r["leave_type"], flt(r.get("annual_allocation")))
+        policy = frappe.get_doc({
+            "doctype": "Leave Policy",
+            "title": title,
+            "leave_policy_details": [
+                {"leave_type": r["leave_type"], "annual_allocation": flt(r.get("annual_allocation"))}
+                for r in rows
+            ],
+        })
+        policy.flags.ignore_permissions = True
+        policy.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {"name": policy.name, "title": policy.title}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_leave_policy")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_leave_policy_assignments(limit=200):
+    try:
+        return frappe.get_all("Leave Policy Assignment",
+            filters={"docstatus": ["!=", 2]},
+            fields=["name", "employee", "employee_name", "leave_policy",
+                    "effective_from", "effective_to", "leaves_allocated", "docstatus"],
+            order_by="creation desc", limit=limit)
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_leave_policy_assignments")
+        return []
+
+
+@frappe.whitelist()
+def bulk_assign_leave_policy(leave_policy, employees, effective_from=None, effective_to=None):
+    """Assign one leave policy to many employees at once and grant their allocations.
+
+    `employees` = JSON list of employee ids (or comma string)."""
+    import json
+    from frappe.utils import getdate, add_years, add_days
+    try:
+        if isinstance(employees, str):
+            try:
+                emp_list = json.loads(employees)
+            except Exception:
+                emp_list = [e.strip() for e in employees.split(",") if e.strip()]
+        else:
+            emp_list = employees or []
+        if not leave_policy or not emp_list:
+            frappe.throw("A policy and at least one employee are required.")
+
+        if not effective_from:
+            effective_from = nowdate()
+        if not effective_to:
+            effective_to = add_days(add_years(getdate(effective_from), 1), -1).strftime("%Y-%m-%d")
+
+        assigned, skipped, errors = [], [], []
+        for emp in emp_list:
+            try:
+                exists = frappe.db.exists("Leave Policy Assignment", {
+                    "employee": emp, "leave_policy": leave_policy,
+                    "effective_from": effective_from, "docstatus": ["!=", 2],
+                })
+                if exists:
+                    skipped.append(emp)
+                    continue
+                lpa = frappe.get_doc({
+                    "doctype": "Leave Policy Assignment",
+                    "employee": emp,
+                    "leave_policy": leave_policy,
+                    "assignment_based_on": "",
+                    "effective_from": effective_from,
+                    "effective_to": effective_to,
+                })
+                lpa.flags.ignore_permissions = True
+                lpa.insert(ignore_permissions=True)
+                lpa.submit()
+                assigned.append(emp)
+            except Exception as ie:
+                errors.append({"employee": emp, "error": str(ie)})
+        frappe.db.commit()
+        return {"assigned": assigned, "skipped": skipped, "errors": errors,
+                "assigned_count": len(assigned), "skipped_count": len(skipped),
+                "error_count": len(errors)}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: bulk_assign_leave_policy")
+        frappe.throw(str(e))
+
+
+def _months_of_service(doj):
+    from frappe.utils import getdate
+    if not doj:
+        return 0
+    d = getdate(doj)
+    t = getdate(nowdate())
+    return (t.year - d.year) * 12 + (t.month - d.month) - (1 if t.day < d.day else 0)
+
+
+UAE_PROBATION_RATE = 2  # working days accrued per month of service (6–12 months)
+
+
+def _probation_accrued_days(employee):
+    """Days already auto-accrued for this employee via probation accrual (submitted)."""
+    rows = frappe.db.sql("""
+        SELECT COALESCE(SUM(new_leaves_allocated), 0) AS d
+        FROM `tabLeave Allocation`
+        WHERE employee=%(e)s AND leave_type='Annual Leave'
+          AND docstatus=1 AND description LIKE 'UAE Probation Accrual%%'
+    """, {"e": employee}, as_dict=True)
+    return flt(rows[0].d) if rows else 0
+
+
+@frappe.whitelist()
+def get_probation_accrual_preview():
+    """Active employees with 6–12 months service — auto-computed accrual figures.
+
+    owed = 2 days × months of service · already = previously accrued · to_grant = owed − already."""
+    try:
+        emps = frappe.get_all("Employee", filters={"status": "Active"},
+            fields=["name", "employee_name", "date_of_joining", "department"], limit=1000)
+        out = []
+        for e in emps:
+            m = _months_of_service(e.date_of_joining)
+            if 6 <= m < 12:
+                owed = UAE_PROBATION_RATE * m
+                already = _probation_accrued_days(e.name)
+                to_grant = max(0, owed - already)
+                out.append({"employee": e.name, "employee_name": e.employee_name,
+                            "department": e.department, "months": m,
+                            "date_of_joining": str(e.date_of_joining or ""),
+                            "owed": owed, "accrued": already, "to_grant": to_grant,
+                            "accrued_this_month": to_grant <= 0})
+        return out
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_probation_accrual_preview")
+        return []
+
+
+@frappe.whitelist()
+def accrue_uae_probation_leave():
+    """Grant 2 days Annual Leave for the current month to each employee with 6–12 months
+    of service (UAE law: 2 working days/month before completing one year).
+    Idempotent per calendar month via a description marker. Safe to run monthly."""
+    from frappe.utils import getdate
+    try:
+        _ensure_leave_type("Annual Leave", 30, 1, 0)
+        emps = frappe.get_all("Employee", filters={"status": "Active"},
+            fields=["name", "employee_name", "date_of_joining"], limit=2000)
+        today = getdate(nowdate())
+        ym = today.strftime("%Y-%m")
+        year_end = f"{today.year}-12-31"
+        granted = []
+        total_days = 0
+        for e in emps:
+            m = _months_of_service(e.date_of_joining)
+            if not (6 <= m < 12):
+                continue
+            # Auto-calculate: owed = 2 days × months of service, grant only the shortfall.
+            owed = UAE_PROBATION_RATE * m
+            already = _probation_accrued_days(e.name)
+            to_grant = owed - already
+            if to_grant <= 0:
+                continue
+            try:
+                alloc = frappe.get_doc({
+                    "doctype": "Leave Allocation",
+                    "employee": e.name,
+                    "leave_type": "Annual Leave",
+                    "from_date": nowdate(),
+                    "to_date": year_end,
+                    "new_leaves_allocated": to_grant,
+                    "description": f"UAE Probation Accrual {ym} (+{to_grant}d · total {owed}d for {m} months)",
+                    "carry_forward": 0,
+                })
+                alloc.flags.ignore_permissions = True
+                alloc.insert(ignore_permissions=True)
+                alloc.submit()
+                total_days += to_grant
+                granted.append({"employee": e.name, "employee_name": e.employee_name,
+                                "months": m, "days": to_grant, "total": owed})
+            except Exception as ie:
+                frappe.log_error(str(ie), "Portal: accrue_uae_probation_leave row")
+        frappe.db.commit()
+        return {"granted_count": len(granted), "granted": granted,
+                "total_days": total_days, "month": ym}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: accrue_uae_probation_leave")
+        frappe.throw(str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CREDIT NOTES (Sales returns) · DEBIT NOTES (Purchase returns)
+# ══════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def get_returnable_sales_invoices(company=None):
+    """Submitted, non-return sales invoices that a credit note can be raised against."""
+    company = company or _get_company()
+    return frappe.get_all("Sales Invoice",
+        filters={"docstatus": 1, "is_return": 0, "company": company},
+        fields=["name", "customer", "customer_name", "posting_date", "grand_total", "currency"],
+        order_by="posting_date desc", limit=200)
+
+
+@frappe.whitelist()
+def get_returnable_purchase_invoices(company=None):
+    """Submitted, non-return purchase invoices that a debit note can be raised against."""
+    company = company or _get_company()
+    return frappe.get_all("Purchase Invoice",
+        filters={"docstatus": 1, "is_return": 0, "company": company},
+        fields=["name", "supplier", "supplier_name", "posting_date", "grand_total", "currency"],
+        order_by="posting_date desc", limit=200)
+
+
+@frappe.whitelist()
+def get_credit_notes(company=None):
+    company = company or _get_company()
+    return frappe.get_all("Sales Invoice",
+        filters={"is_return": 1, "company": company, "docstatus": ["<", 2]},
+        fields=["name", "customer", "customer_name", "return_against", "posting_date",
+                "grand_total", "currency", "status", "docstatus"],
+        order_by="posting_date desc", limit=300)
+
+
+@frappe.whitelist()
+def get_debit_notes(company=None):
+    company = company or _get_company()
+    return frappe.get_all("Purchase Invoice",
+        filters={"is_return": 1, "company": company, "docstatus": ["<", 2]},
+        fields=["name", "supplier", "supplier_name", "return_against", "posting_date",
+                "grand_total", "currency", "status", "docstatus"],
+        order_by="posting_date desc", limit=300)
+
+
+def _make_return_note(doctype, return_against, posting_date=None, remarks=None):
+    from erpnext.controllers.sales_and_purchase_return import make_return_doc
+    if not return_against:
+        frappe.throw("Select the original invoice to return against.")
+    if not frappe.db.exists(doctype, {"name": return_against, "docstatus": 1, "is_return": 0}):
+        frappe.throw(f"{doctype} {return_against} is not a submitted, returnable invoice.")
+    doc = make_return_doc(doctype, return_against)
+    doc.posting_date = posting_date or nowdate()
+    if doctype == "Sales Invoice":
+        doc.set_posting_time = 1
+    if remarks:
+        doc.remarks = remarks
+    doc.flags.ignore_permissions = True
+    doc.insert(ignore_permissions=True)
+    doc.submit()
+    return doc
+
+
+@frappe.whitelist()
+def create_credit_note(return_against, posting_date=None, remarks=None):
+    """Create & submit a Credit Note (sales return) against an existing Sales Invoice."""
+    try:
+        doc = _make_return_note("Sales Invoice", return_against, posting_date, remarks)
+        return {"name": doc.name, "grand_total": doc.grand_total,
+                "customer": doc.customer, "return_against": doc.return_against}
+    except frappe.ValidationError as e:
+        frappe.throw(str(e))
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: Create Credit Note")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def create_debit_note(return_against, posting_date=None, remarks=None):
+    """Create & submit a Debit Note (purchase return) against an existing Purchase Invoice."""
+    try:
+        doc = _make_return_note("Purchase Invoice", return_against, posting_date, remarks)
+        return {"name": doc.name, "grand_total": doc.grand_total,
+                "supplier": doc.supplier, "return_against": doc.return_against}
+    except frappe.ValidationError as e:
+        frappe.throw(str(e))
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: Create Debit Note")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_task_insights(company=None):
+    """Aggregated task analytics: status mix, per-user workload, and daily throughput."""
+    import json as _json
+    from frappe.utils import getdate, add_days, date_diff
+    company = company or _get_company()
+    try:
+        tasks = frappe.get_all("Task",
+            filters={"company": company} if company else {},
+            fields=["name", "subject", "status", "exp_end_date", "creation", "modified", "_assign"],
+            limit=5000)
+        today = getdate(nowdate())
+        win = 30
+        start = add_days(today, -win)
+
+        status_count = {}
+        overdue = 0
+        assigned_recent = 0
+        completed_recent = 0
+        user_map = {}   # user -> {open, completed, total}
+        unassigned = 0
+
+        for t in tasks:
+            st = t.status or "Open"
+            status_count[st] = status_count.get(st, 0) + 1
+            is_done = st in ("Completed", "Cancelled")
+            if t.exp_end_date and getdate(t.exp_end_date) < today and not is_done:
+                overdue += 1
+            if t.creation and getdate(t.creation) >= start:
+                assigned_recent += 1
+            if st == "Completed" and t.modified and getdate(t.modified) >= start:
+                completed_recent += 1
+            assignees = []
+            if t.get("_assign"):
+                try:
+                    assignees = _json.loads(t._assign) or []
+                except Exception:
+                    assignees = []
+            if not assignees:
+                unassigned += 1
+            for u in assignees:
+                m = user_map.setdefault(u, {"open": 0, "completed": 0, "total": 0})
+                m["total"] += 1
+                if st == "Completed":
+                    m["completed"] += 1
+                elif not is_done:
+                    m["open"] += 1
+
+        # attach display names
+        names = {}
+        if user_map:
+            for r in frappe.get_all("User", filters={"name": ["in", list(user_map.keys())]},
+                                    fields=["name", "full_name"]):
+                names[r.name] = r.full_name
+        workload = [{"user": u, "full_name": names.get(u, u),
+                     "open": v["open"], "completed": v["completed"], "total": v["total"]}
+                    for u, v in user_map.items()]
+        workload.sort(key=lambda x: x["total"], reverse=True)
+
+        active_users = sum(1 for v in user_map.values() if v["open"] > 0)
+        total = len(tasks)
+        completed = status_count.get("Completed", 0)
+
+        return {
+            "total": total,
+            "completed": completed,
+            "in_progress": status_count.get("Working", 0) + status_count.get("Open", 0) + status_count.get("Pending Review", 0),
+            "overdue": overdue,
+            "completion_rate": round(completed / total * 100) if total else 0,
+            "active_users": active_users,
+            "unassigned": unassigned,
+            "status_breakdown": status_count,
+            "avg_daily_assigned": round(assigned_recent / win, 1),
+            "avg_daily_completed": round(completed_recent / win, 1),
+            "window_days": win,
+            "workload": workload[:10],
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_task_insights")
+        return {"total": 0, "workload": [], "status_breakdown": {}}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  TEAM: Who's In · Celebrations · Kudos · Org Chart
+# ══════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def get_whos_in(company=None):
+    """Live team presence for today from Leave, Attendance and Check-in data."""
+    from frappe.utils import getdate
+    try:
+        emps = frappe.get_all("Employee", filters={"status": "Active"},
+            fields=["name", "employee_name", "image", "department", "designation"],
+            order_by="employee_name", limit=2000)
+        today = nowdate()
+        on_leave = set(frappe.get_all("Leave Application",
+            filters={"status": "Approved", "docstatus": 1,
+                     "from_date": ["<=", today], "to_date": [">=", today]}, pluck="employee"))
+        att = {a.employee: a.status for a in frappe.get_all("Attendance",
+            filters={"attendance_date": today, "docstatus": 1},
+            fields=["employee", "status"])}
+        last_in = {}
+        try:
+            for r in frappe.get_all("Employee Checkin",
+                filters={"time": ["between", [today + " 00:00:00", today + " 23:59:59"]]},
+                fields=["employee", "log_type", "time"], order_by="time desc", limit=4000):
+                if r.employee not in last_in:
+                    last_in[r.employee] = r
+        except Exception:
+            pass
+
+        def status_for(e):
+            if e.name in on_leave:
+                return "On Leave"
+            s = att.get(e.name)
+            if s == "Work From Home":
+                return "WFH"
+            if s in ("Present", "Half Day"):
+                return s
+            if s == "Absent":
+                return "Absent"
+            lg = last_in.get(e.name)
+            if lg and lg.log_type == "IN":
+                return "Present"
+            return "Out"
+
+        members, counts = [], {"Present": 0, "WFH": 0, "On Leave": 0, "Half Day": 0, "Absent": 0, "Out": 0}
+        for e in emps:
+            st = status_for(e)
+            counts[st] = counts.get(st, 0) + 1
+            members.append({"employee": e.name, "employee_name": e.employee_name,
+                            "image": e.image, "department": e.department,
+                            "designation": e.designation, "status": st})
+        order = {"Present": 0, "WFH": 1, "Half Day": 2, "On Leave": 3, "Absent": 4, "Out": 5}
+        members.sort(key=lambda m: (order.get(m["status"], 9), m["employee_name"] or ""))
+        present_like = counts["Present"] + counts["WFH"] + counts["Half Day"]
+        return {"total": len(emps), "in_count": present_like, "counts": counts, "members": members}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_whos_in")
+        return {"total": 0, "in_count": 0, "counts": {}, "members": []}
+
+
+@frappe.whitelist()
+def get_celebrations(company=None):
+    """Birthdays and work anniversaries falling in the current month."""
+    from frappe.utils import getdate
+    try:
+        today = getdate(nowdate())
+        m = today.month
+        emps = frappe.get_all("Employee", filters={"status": "Active"},
+            fields=["name", "employee_name", "image", "department", "designation",
+                    "date_of_birth", "date_of_joining"], limit=2000)
+        birthdays, anniversaries = [], []
+        for e in emps:
+            if e.date_of_birth and getdate(e.date_of_birth).month == m:
+                d = getdate(e.date_of_birth)
+                birthdays.append({"employee": e.name, "employee_name": e.employee_name,
+                                  "image": e.image, "department": e.department,
+                                  "day": d.day, "date": d.replace(year=today.year).strftime("%Y-%m-%d"),
+                                  "upcoming": d.day >= today.day})
+            if e.date_of_joining and getdate(e.date_of_joining).month == m:
+                d = getdate(e.date_of_joining)
+                yrs = today.year - d.year
+                if yrs >= 1:
+                    anniversaries.append({"employee": e.name, "employee_name": e.employee_name,
+                                          "image": e.image, "department": e.department,
+                                          "day": d.day, "years": yrs,
+                                          "date": d.replace(year=today.year).strftime("%Y-%m-%d"),
+                                          "upcoming": d.day >= today.day})
+        birthdays.sort(key=lambda x: x["day"])
+        anniversaries.sort(key=lambda x: x["day"])
+        return {"month": today.strftime("%B"), "today_day": today.day,
+                "birthdays": birthdays, "anniversaries": anniversaries}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_celebrations")
+        return {"birthdays": [], "anniversaries": []}
+
+
+def _ensure_kudos_doctype():
+    if frappe.db.exists("DocType", "Team Kudos"):
+        return
+    dt = frappe.get_doc({
+        "doctype": "DocType", "name": "Team Kudos", "module": "Next Ai",
+        "custom": 1, "autoname": "hash", "track_changes": 0,
+        "fields": [
+            {"fieldname": "to_employee", "label": "To Employee", "fieldtype": "Link", "options": "Employee", "in_list_view": 1, "reqd": 1},
+            {"fieldname": "to_employee_name", "label": "To Employee Name", "fieldtype": "Data"},
+            {"fieldname": "message", "label": "Message", "fieldtype": "Small Text", "in_list_view": 1},
+            {"fieldname": "points", "label": "Points", "fieldtype": "Int", "default": "10"},
+            {"fieldname": "given_by", "label": "Given By", "fieldtype": "Data"},
+            {"fieldname": "given_by_name", "label": "Given By Name", "fieldtype": "Data"},
+        ],
+        "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}],
+    })
+    dt.flags.ignore_permissions = True
+    dt.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
+@frappe.whitelist()
+def give_kudos(to_employee, message, points=10):
+    try:
+        _ensure_kudos_doctype()
+        if not to_employee or not (message or "").strip():
+            frappe.throw("Pick a colleague and write a short message.")
+        emp_name = frappe.db.get_value("Employee", to_employee, "employee_name") or to_employee
+        user = frappe.session.user
+        giver = frappe.db.get_value("User", user, "full_name") or user
+        doc = frappe.get_doc({
+            "doctype": "Team Kudos", "to_employee": to_employee, "to_employee_name": emp_name,
+            "message": (message or "").strip()[:500], "points": int(points or 10),
+            "given_by": user, "given_by_name": giver,
+        })
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {"name": doc.name}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: give_kudos")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_kudos_feed(limit=25):
+    try:
+        _ensure_kudos_doctype()
+        feed = frappe.get_all("Team Kudos",
+            fields=["name", "to_employee", "to_employee_name", "message", "points",
+                    "given_by", "given_by_name", "creation"],
+            order_by="creation desc", limit=int(limit))
+        board = {}
+        for r in frappe.get_all("Team Kudos", fields=["to_employee", "to_employee_name", "points"], limit=5000):
+            b = board.setdefault(r.to_employee, {"employee": r.to_employee,
+                                                 "employee_name": r.to_employee_name, "points": 0, "count": 0})
+            b["points"] += int(r.points or 0); b["count"] += 1
+        # attach images
+        imgs = {e.name: e.image for e in frappe.get_all("Employee",
+                filters={"name": ["in", list(board.keys())]}, fields=["name", "image"])} if board else {}
+        leaderboard = sorted(board.values(), key=lambda x: x["points"], reverse=True)[:8]
+        for b in leaderboard:
+            b["image"] = imgs.get(b["employee"])
+        return {"feed": feed, "leaderboard": leaderboard}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_kudos_feed")
+        return {"feed": [], "leaderboard": []}
+
+
+@frappe.whitelist()
+def get_org_chart(company=None):
+    """Active employees with their manager link, for building a reporting tree."""
+    try:
+        emps = frappe.get_all("Employee", filters={"status": "Active"},
+            fields=["name", "employee_name", "image", "designation", "department", "reports_to"],
+            order_by="employee_name", limit=3000)
+        return emps
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_org_chart")
+        return []
+
+
+@frappe.whitelist()
+def get_stock_insights(company=None):
+    """Rich inventory analytics: balance, reorder/low-stock, fast & slow movers,
+    average purchase/selling price, and warehouse-wise stock."""
+    from frappe.utils import add_days
+    _require_stock_permission()
+    company = company or _get_company()
+    try:
+        start90 = add_days(nowdate(), -90)
+        start180 = add_days(nowdate(), -180)
+        p = {"company": company, "s90": start90, "s180": start180}
+
+        items = frappe.db.sql("""
+            SELECT i.name AS item_code, i.item_name, i.item_group, i.stock_uom,
+                   i.safety_stock, i.valuation_rate,
+                   IFNULL(SUM(CASE WHEN w.name IS NOT NULL THEN b.actual_qty ELSE 0 END),0) AS actual_qty,
+                   IFNULL(SUM(CASE WHEN w.name IS NOT NULL THEN b.stock_value ELSE 0 END),0) AS stock_value
+            FROM `tabItem` i
+            LEFT JOIN `tabBin` b ON b.item_code=i.name
+            LEFT JOIN `tabWarehouse` w ON w.name=b.warehouse AND w.company=%(company)s
+            WHERE i.disabled=0 AND i.is_stock_item=1
+            GROUP BY i.name, i.item_name, i.item_group, i.stock_uom, i.safety_stock, i.valuation_rate
+            LIMIT 2000
+        """, p, as_dict=True)
+
+        out_map = {r.item_code: flt(r.qty_out) for r in frappe.db.sql("""
+            SELECT sle.item_code, SUM(CASE WHEN sle.actual_qty<0 THEN -sle.actual_qty ELSE 0 END) AS qty_out
+            FROM `tabStock Ledger Entry` sle
+            JOIN `tabWarehouse` w ON w.name=sle.warehouse AND w.company=%(company)s
+            WHERE sle.posting_date >= %(s90)s AND sle.is_cancelled=0
+            GROUP BY sle.item_code
+        """, p, as_dict=True)}
+
+        sell_map = {r.item_code: flt(r.avg_sell) for r in frappe.db.sql("""
+            SELECT sii.item_code, AVG(sii.base_net_rate) AS avg_sell
+            FROM `tabSales Invoice Item` sii JOIN `tabSales Invoice` si ON si.name=sii.parent
+            WHERE si.docstatus=1 AND si.company=%(company)s AND si.posting_date>=%(s180)s AND sii.base_net_rate>0
+            GROUP BY sii.item_code
+        """, p, as_dict=True)}
+
+        buy_map = {r.item_code: flt(r.avg_buy) for r in frappe.db.sql("""
+            SELECT pii.item_code, AVG(pii.base_net_rate) AS avg_buy
+            FROM `tabPurchase Invoice Item` pii JOIN `tabPurchase Invoice` pi ON pi.name=pii.parent
+            WHERE pi.docstatus=1 AND pi.company=%(company)s AND pi.posting_date>=%(s180)s AND pii.base_net_rate>0
+            GROUP BY pii.item_code
+        """, p, as_dict=True)}
+
+        warehouses = frappe.db.sql("""
+            SELECT b.warehouse, SUM(b.actual_qty) AS qty, SUM(b.stock_value) AS value
+            FROM `tabBin` b JOIN `tabWarehouse` w ON w.name=b.warehouse AND w.company=%(company)s
+            GROUP BY b.warehouse HAVING qty <> 0 ORDER BY value DESC LIMIT 30
+        """, p, as_dict=True)
+
+        total_qty = total_value = 0
+        low_stock, reorder, fast, slow, price = [], [], [], [], []
+        out_of_stock = 0
+        for it in items:
+            qty = flt(it.actual_qty); val = flt(it.stock_value)
+            total_qty += qty; total_value += val
+            qty_out = out_map.get(it.item_code, 0)
+            it["qty_out_90"] = qty_out
+            if qty <= 0:
+                out_of_stock += 1
+            if flt(it.safety_stock) > 0 and qty <= flt(it.safety_stock):
+                reorder.append({**it, "shortfall": flt(it.safety_stock) - qty})
+            avg_buy = buy_map.get(it.item_code) or flt(it.valuation_rate)
+            avg_sell = sell_map.get(it.item_code, 0)
+            if avg_sell or avg_buy:
+                margin = round((avg_sell - avg_buy) / avg_sell * 100) if avg_sell else 0
+                price.append({"item_code": it.item_code, "item_name": it.item_name,
+                              "avg_purchase": round(avg_buy, 2), "avg_selling": round(avg_sell, 2),
+                              "margin_pct": margin, "valuation_rate": flt(it.valuation_rate)})
+
+        movers = sorted(items, key=lambda x: x.get("qty_out_90", 0), reverse=True)
+        fast = [m for m in movers if m.get("qty_out_90", 0) > 0][:10]
+        slow = sorted([m for m in items if m.get("qty_out_90", 0) == 0 and flt(m.actual_qty) > 0],
+                      key=lambda x: flt(x.stock_value), reverse=True)[:10]
+        reorder.sort(key=lambda x: x["shortfall"], reverse=True)
+        price.sort(key=lambda x: x["margin_pct"], reverse=True)
+
+        return {
+            "summary": {"total_items": len(items), "total_qty": total_qty,
+                        "total_value": total_value, "reorder_count": len(reorder),
+                        "out_of_stock": out_of_stock, "warehouse_count": len(warehouses)},
+            "fast_moving": fast, "slow_moving": slow, "reorder": reorder[:25],
+            "warehouses": warehouses, "price": price[:25],
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_stock_insights")
+        frappe.throw(str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SETTINGS: Portal Users & Access (creation + roles/permissions)
+# ══════════════════════════════════════════════════════════════════
+
+# Roles most relevant to the firm portal modules.
+PORTAL_ROLE_CHOICES = [
+    {"role": "Accounts User", "group": "Accounting"},
+    {"role": "Accounts Manager", "group": "Accounting"},
+    {"role": "Sales User", "group": "Sales"},
+    {"role": "Sales Manager", "group": "Sales"},
+    {"role": "Purchase User", "group": "Buying"},
+    {"role": "Purchase Manager", "group": "Buying"},
+    {"role": "Stock User", "group": "Stock"},
+    {"role": "Stock Manager", "group": "Stock"},
+    {"role": "HR User", "group": "HR"},
+    {"role": "HR Manager", "group": "HR"},
+    {"role": "Projects User", "group": "Projects"},
+    {"role": "Projects Manager", "group": "Projects"},
+    {"role": "Employee", "group": "General"},
+    {"role": "System Manager", "group": "Administration"},
+]
+
+
+def _require_user_admin():
+    roles = frappe.get_roles()
+    if "System Manager" not in roles:
+        frappe.throw("Only System Managers can manage portal users and access.")
+
+
+@frappe.whitelist()
+def get_portal_access():
+    _require_user_admin()
+    users = frappe.get_all("User",
+        filters={"user_type": "System User", "name": ["not in", ["Administrator", "Guest"]]},
+        fields=["name", "full_name", "enabled", "user_image", "last_active"],
+        order_by="full_name asc", limit=500)
+    role_map = {}
+    for r in frappe.get_all("Has Role", fields=["parent", "role"], limit=10000):
+        role_map.setdefault(r.parent, []).append(r.role)
+    allowed = {c["role"] for c in PORTAL_ROLE_CHOICES}
+    for u in users:
+        u["roles"] = sorted(r for r in role_map.get(u.name, []) if r in allowed)
+        u["all_roles_count"] = len(role_map.get(u.name, []))
+    return {"users": users, "roles": PORTAL_ROLE_CHOICES}
+
+
+@frappe.whitelist()
+def create_portal_user(email, first_name, last_name=None, roles=None, send_welcome=0):
+    import json as _json
+    _require_user_admin()
+    if not email or not first_name:
+        frappe.throw("Email and first name are required.")
+    if frappe.db.exists("User", email):
+        frappe.throw(f"User {email} already exists.")
+    role_list = _json.loads(roles) if isinstance(roles, str) else (roles or [])
+    role_list = [r for r in role_list if r in {c["role"] for c in PORTAL_ROLE_CHOICES}]
+    try:
+        u = frappe.get_doc({
+            "doctype": "User", "email": email,
+            "first_name": first_name, "last_name": last_name or "",
+            "user_type": "System User", "send_welcome_email": int(send_welcome or 0),
+        })
+        u.flags.ignore_permissions = True
+        u.insert(ignore_permissions=True)
+        if role_list:
+            u.add_roles(*role_list)
+        frappe.db.commit()
+        return {"name": u.name, "full_name": u.full_name, "roles": role_list}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_portal_user")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def set_portal_user_roles(user, roles):
+    import json as _json
+    _require_user_admin()
+    if user == "Administrator":
+        frappe.throw("The Administrator account cannot be edited here.")
+    target = set(_json.loads(roles) if isinstance(roles, str) else (roles or []))
+    allowed = {c["role"] for c in PORTAL_ROLE_CHOICES}
+    target = {r for r in target if r in allowed}
+    try:
+        u = frappe.get_doc("User", user)
+        current = {r.role for r in u.roles if r.role in allowed}
+        to_add, to_remove = target - current, current - target
+        if to_add:
+            u.add_roles(*to_add)
+        if to_remove:
+            u.remove_roles(*to_remove)
+        frappe.db.commit()
+        return {"user": user, "roles": sorted(target)}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: set_portal_user_roles")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def set_portal_user_enabled(user, enabled):
+    _require_user_admin()
+    if user in ("Administrator", frappe.session.user):
+        frappe.throw("You cannot disable this account.")
+    frappe.db.set_value("User", user, "enabled", int(enabled))
+    frappe.db.commit()
+    return {"user": user, "enabled": int(enabled)}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PROJECTS & TASKS: My Work · Timesheets · Profitability
+# ══════════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def get_my_work(user=None):
+    """The current user's open tasks, bucketed by due date."""
+    from frappe.utils import getdate
+    user = user or frappe.session.user
+    try:
+        tasks = frappe.get_all("Task",
+            filters=[["_assign", "like", f"%{user}%"], ["status", "not in", ["Completed", "Cancelled"]]],
+            fields=["name", "subject", "status", "priority", "exp_end_date", "progress", "project"],
+            order_by="exp_end_date asc", limit=500)
+        today = getdate(nowdate())
+        buckets = {"overdue": [], "today": [], "upcoming": [], "no_date": []}
+        proj_names = {}
+        for t in tasks:
+            if t.project and t.project not in proj_names:
+                proj_names[t.project] = frappe.db.get_value("Project", t.project, "project_name") or t.project
+            t["project_name"] = proj_names.get(t.project, "")
+            if not t.exp_end_date:
+                buckets["no_date"].append(t)
+            elif getdate(t.exp_end_date) < today:
+                buckets["overdue"].append(t)
+            elif getdate(t.exp_end_date) == today:
+                buckets["today"].append(t)
+            else:
+                buckets["upcoming"].append(t)
+        return {"buckets": buckets, "total": len(tasks),
+                "counts": {k: len(v) for k, v in buckets.items()}}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_my_work")
+        return {"buckets": {"overdue": [], "today": [], "upcoming": [], "no_date": []}, "total": 0, "counts": {}}
+
+
+def _ensure_activity_type():
+    name = frappe.db.get_value("Activity Type", {}, "name")
+    if name:
+        return name
+    doc = frappe.get_doc({"doctype": "Activity Type", "activity_type": "Execution"})
+    doc.flags.ignore_permissions = True
+    doc.insert(ignore_permissions=True)
+    return doc.name
+
+
+@frappe.whitelist()
+def get_my_timesheets(user=None):
+    user = user or frappe.session.user
+    try:
+        emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
+        filt = {"employee": emp} if emp else {"owner": user}
+        rows = frappe.get_all("Timesheet", filters=filt,
+            fields=["name", "total_hours", "total_billable_hours", "status",
+                    "start_date", "end_date", "docstatus"],
+            order_by="modified desc", limit=100)
+        week_total = sum(flt(r.total_hours) for r in rows[:7])
+        return {"timesheets": rows, "has_employee": bool(emp), "recent_hours": week_total}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_my_timesheets")
+        return {"timesheets": [], "has_employee": False}
+
+
+@frappe.whitelist()
+def create_timesheet_log(hours, date=None, task=None, project=None, activity_type=None, description=None, company=None):
+    try:
+        company = company or _get_company()
+        user = frappe.session.user
+        emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
+        act = activity_type or _ensure_activity_type()
+        d = date or nowdate()
+        if task and not project:
+            project = frappe.db.get_value("Task", task, "project")
+        ts = frappe.get_doc({
+            "doctype": "Timesheet", "company": company, "employee": emp or None,
+            "time_logs": [{
+                "activity_type": act, "hours": flt(hours),
+                "task": task or None, "project": project or None,
+                "from_time": f"{d} 09:00:00", "description": description or None,
+            }],
+        })
+        ts.flags.ignore_permissions = True
+        ts.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {"name": ts.name, "total_hours": ts.total_hours}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_timesheet_log")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def get_project_profitability(company=None):
+    company = company or _get_company()
+    try:
+        rows = frappe.get_all("Project",
+            filters={"company": company} if company else {},
+            fields=["name", "project_name", "status", "customer", "percent_complete",
+                    "estimated_costing", "total_costing_amount", "total_purchase_cost",
+                    "total_billable_amount", "total_billed_amount", "gross_margin", "per_gross_margin"],
+            order_by="modified desc", limit=200)
+        tot = {"billable": 0, "billed": 0, "cost": 0, "margin": 0}
+        for r in rows:
+            cost = flt(r.total_costing_amount) + flt(r.total_purchase_cost)
+            r["actual_cost"] = cost
+            r["margin"] = flt(r.total_billable_amount) - cost
+            r["margin_pct"] = round(r["margin"] / flt(r.total_billable_amount) * 100) if flt(r.total_billable_amount) else 0
+            tot["billable"] += flt(r.total_billable_amount)
+            tot["billed"] += flt(r.total_billed_amount)
+            tot["cost"] += cost
+            tot["margin"] += r["margin"]
+        tot["margin_pct"] = round(tot["margin"] / tot["billable"] * 100) if tot["billable"] else 0
+        return {"projects": rows, "totals": tot}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: get_project_profitability")
+        return {"projects": [], "totals": {}}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  HR: Holiday Lists with country presets
+# ══════════════════════════════════════════════════════════════════
+
+# Fixed-date national/public holidays per country (month, day, name).
+# Islamic holidays (Eid etc.) shift yearly and are left for manual addition.
+HOLIDAY_PRESETS = {
+    "UAE": [(1,1,"New Year's Day"),(12,1,"Commemoration Day"),(12,2,"National Day"),(12,3,"National Day Holiday")],
+    "UK": [(1,1,"New Year's Day"),(12,25,"Christmas Day"),(12,26,"Boxing Day")],
+    "Pakistan": [(2,5,"Kashmir Day"),(3,23,"Pakistan Day"),(5,1,"Labour Day"),(8,14,"Independence Day"),(11,9,"Iqbal Day"),(12,25,"Quaid-e-Azam Day")],
+    "Philippines": [(1,1,"New Year's Day"),(4,9,"Day of Valor"),(5,1,"Labor Day"),(6,12,"Independence Day"),(8,21,"Ninoy Aquino Day"),(11,1,"All Saints' Day"),(11,30,"Bonifacio Day"),(12,25,"Christmas Day"),(12,30,"Rizal Day")],
+    "Türkiye": [(1,1,"New Year's Day"),(4,23,"National Sovereignty & Children's Day"),(5,1,"Labour Day"),(5,19,"Commemoration of Atatürk"),(7,15,"Democracy Day"),(8,30,"Victory Day"),(10,29,"Republic Day")],
+}
+
+
+@frappe.whitelist()
+def get_holiday_presets():
+    return {"countries": list(HOLIDAY_PRESETS.keys())}
+
+
+@frappe.whitelist()
+def get_holiday_lists():
+    try:
+        lists = frappe.get_all("Holiday List",
+            fields=["name", "holiday_list_name", "from_date", "to_date", "total_holidays"],
+            order_by="from_date desc", limit=100)
+        return lists
+    except Exception:
+        return []
+
+
+@frappe.whitelist()
+def create_holiday_list(title, year, country=None, weekly_off=None, extra_holidays=None):
+    """Create a Holiday List for a year, pre-filled with a country's public holidays
+    and (optionally) a recurring weekly off day."""
+    import json as _json
+    from frappe.utils import getdate
+    try:
+        year = int(year)
+        from_date, to_date = f"{year}-01-01", f"{year}-12-31"
+        doc = frappe.get_doc({
+            "doctype": "Holiday List",
+            "holiday_list_name": title or f"{country or 'Company'} {year}",
+            "from_date": from_date, "to_date": to_date,
+        })
+        if weekly_off:
+            doc.weekly_off = weekly_off
+
+        added = 0
+        for (mo, day, name) in HOLIDAY_PRESETS.get(country, []):
+            try:
+                d = getdate(f"{year}-{mo:02d}-{day:02d}")
+                doc.append("holidays", {"holiday_date": str(d), "description": name})
+                added += 1
+            except Exception:
+                pass
+        for h in (_json.loads(extra_holidays) if isinstance(extra_holidays, str) else (extra_holidays or [])):
+            if h.get("date"):
+                doc.append("holidays", {"holiday_date": h["date"], "description": h.get("name") or "Holiday"})
+                added += 1
+
+        doc.flags.ignore_permissions = True
+        doc.insert(ignore_permissions=True)
+        # Auto-populate weekly offs (Saturdays/Sundays etc.) if requested.
+        if weekly_off:
+            try:
+                doc.get_weekly_off_dates()
+                doc.save(ignore_permissions=True)
+            except Exception:
+                pass
+        frappe.db.commit()
+        return {"name": doc.name, "holidays_added": added, "total": doc.total_holidays}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: create_holiday_list")
+        frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def assign_holiday_list(holiday_list, employees=None, all_active=0):
+    """Set a holiday list on selected employees (or all active)."""
+    import json as _json
+    try:
+        if int(all_active or 0):
+            emp_list = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name")
+        else:
+            emp_list = _json.loads(employees) if isinstance(employees, str) else (employees or [])
+        n = 0
+        for e in emp_list:
+            frappe.db.set_value("Employee", e, "holiday_list", holiday_list)
+            n += 1
+        frappe.db.commit()
+        return {"updated": n}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Portal: assign_holiday_list")
+        frappe.throw(str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SERVICE PROPOSAL TEMPLATES (scope of work + terms + costs per service)
+# ══════════════════════════════════════════════════════════════════
+
+SERVICE_TEMPLATES = [
+    {
+        "key": "meydan_formation", "name": "Meydan Free Zone — Company Formation + Visa",
+        "category": "Company Formation", "icon": "fa-building-flag",
+        "scope": [
+            "Reservation of trade name and initial approval with Meydan Free Zone.",
+            "Issuance of Free Zone Commercial/Service License (1 visa allocation).",
+            "Preparation of MOA / incorporation documents and lease (Ejari/flexi-desk).",
+            "Establishment Card and E-Channel immigration registration.",
+            "Investor/Employment visa processing: entry permit, status change, medical, Emirates ID and visa stamping.",
+            "Corporate bank account introduction and assistance.",
+        ],
+        "terms": [
+            "Government, Free Zone and immigration fees are at actuals and may change without notice.",
+            "Timelines are subject to authority approvals and applicant document readiness.",
+            "Professional fees are non-refundable once the application is lodged with the authority.",
+            "Medical fitness and security clearance are prerequisites for visa issuance.",
+            "Quotation valid for 30 days from the date of issue.",
+        ],
+        "items": [
+            {"description": "Meydan FZ Commercial License (1 Visa allocation)", "qty": 1, "rate": 14900},
+            {"description": "Establishment Card + E-Channel Registration", "qty": 1, "rate": 3500},
+            {"description": "Investor Visa (2 years) — entry permit, medical, EID, stamping", "qty": 1, "rate": 4000},
+            {"description": "PRO & Documentation Service Fee", "qty": 1, "rate": 1500},
+        ],
+    },
+    {
+        "key": "regulated_activity", "name": "Regulated Activity Licensing & Approvals",
+        "category": "Company Formation", "icon": "fa-shield-halved",
+        "scope": [
+            "Assessment of the regulated activity and the competent authority (e.g. Central Bank, SCA, DET, KHDA, DHA, etc.).",
+            "Preparation and submission of the special/external approval application.",
+            "Coordination with the regulator for inspections, qualifications and compliance evidence.",
+            "Issuance of the activity-specific license with the regulated approval annotated.",
+        ],
+        "terms": [
+            "Regulatory approval is at the sole discretion of the competent authority.",
+            "Additional capital, qualifications, insurance or office requirements may be imposed by the regulator.",
+            "External approval fees are at actuals and vary by authority and activity.",
+            "Quotation valid for 30 days; timelines depend on regulator response.",
+        ],
+        "items": [
+            {"description": "Regulated Activity Approval — application & coordination", "qty": 1, "rate": 6500},
+            {"description": "External / Special Approval Authority Fee (at actuals — estimate)", "qty": 1, "rate": 5000},
+        ],
+    },
+    {
+        "key": "accounting", "name": "Accounting & Financial Statements (Annual)",
+        "category": "Accounting", "icon": "fa-calculator",
+        "scope": [
+            "Maintenance of the general ledger and chart of accounts.",
+            "Preparation of monthly management accounts and reconciliations.",
+            "Preparation of annual financial statements (Balance Sheet, P&L, Cash Flow).",
+            "Coordination with auditors and provision of supporting schedules.",
+        ],
+        "terms": [
+            "Fees are based on the agreed transaction volume; material changes may be re-quoted.",
+            "Client to provide source documents in a timely manner each month.",
+            "Engagement excludes statutory audit unless separately agreed.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "Accounting & Financial Statements (Annual)", "qty": 1, "rate": 12000},
+        ],
+    },
+    {
+        "key": "bookkeeping", "name": "Bookkeeping (Monthly)",
+        "category": "Accounting", "icon": "fa-book",
+        "scope": [
+            "Recording of sales, purchases, expenses and bank transactions.",
+            "Monthly bank and supplier/customer reconciliations.",
+            "Maintenance of accounts on cloud accounting software.",
+            "Monthly trial balance and basic management reports.",
+        ],
+        "terms": [
+            "Monthly retainer billed in advance; minimum 12-month engagement.",
+            "Transaction volume thresholds apply; excess volume re-quoted.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "Bookkeeping Service (Monthly retainer)", "qty": 12, "rate": 600},
+        ],
+    },
+    {
+        "key": "tax_residency", "name": "Tax Residency Certificate (TRC)",
+        "category": "Tax", "icon": "fa-passport",
+        "scope": [
+            "Eligibility assessment for UAE Tax Residency (individual or corporate).",
+            "Compilation of supporting documents (tenancy, bank statements, immigration report).",
+            "Application submission on the Federal Tax Authority (FTA) portal.",
+            "Follow-up with the FTA until issuance of the TRC.",
+        ],
+        "terms": [
+            "Issuance is subject to FTA approval and meeting the residency criteria (183/90 days as applicable).",
+            "FTA government fees are at actuals and payable in advance.",
+            "Professional fee is non-refundable once the application is submitted.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "Tax Residency Certificate (TRC) — application & follow-up", "qty": 1, "rate": 4500},
+            {"description": "FTA Government Fee (at actuals — estimate)", "qty": 1, "rate": 2000},
+        ],
+    },
+    {
+        "key": "vat_registration", "name": "VAT Registration",
+        "category": "Tax", "icon": "fa-receipt",
+        "scope": [
+            "Assessment of mandatory/voluntary VAT registration threshold.",
+            "Preparation of the VAT registration application and supporting documents.",
+            "Submission on the FTA EmaraTax portal and liaison until TRN issuance.",
+            "Guidance on VAT invoicing and record-keeping obligations.",
+        ],
+        "terms": [
+            "Registration outcome and TRN issuance are subject to FTA approval.",
+            "Penalties for late registration (if any) are the client's responsibility.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "VAT Registration — application & TRN issuance", "qty": 1, "rate": 1000},
+        ],
+    },
+    {
+        "key": "corporate_tax", "name": "Corporate Tax Registration & Filing",
+        "category": "Tax", "icon": "fa-landmark",
+        "scope": [
+            "Corporate Tax registration on the FTA EmaraTax portal.",
+            "Assessment of taxable income, reliefs and Small Business Relief eligibility.",
+            "Preparation and filing of the annual Corporate Tax return.",
+            "Maintenance of supporting computations and documentation.",
+        ],
+        "terms": [
+            "Based on a simple return; transfer pricing / complex adjustments quoted separately.",
+            "Client to provide audited/finalised financials before the filing deadline.",
+            "FTA penalties for late registration or filing are the client's responsibility.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "Corporate Tax Registration", "qty": 1, "rate": 750},
+            {"description": "Corporate Tax Filing — Simple Return (Annual)", "qty": 1, "rate": 2000},
+        ],
+    },
+    {
+        "key": "vat_return", "name": "VAT Return Filing (Quarterly)",
+        "category": "Tax", "icon": "fa-file-invoice",
+        "scope": [
+            "Review of sales and purchase records for the tax period.",
+            "Computation of output and recoverable input VAT.",
+            "Preparation and filing of the VAT return (Form 201) on EmaraTax.",
+            "Advisory on payment and record-keeping.",
+        ],
+        "terms": [
+            "Billed per return; assumes books are maintained and reconciled.",
+            "Client responsible for settling any VAT payable to the FTA by the due date.",
+            "Quotation valid for 30 days from issue.",
+        ],
+        "items": [
+            {"description": "VAT Return Filing (per quarter)", "qty": 4, "rate": 1000},
+        ],
+    },
+]
+
+
+@frappe.whitelist()
+def get_service_templates():
+    """Catalog of service proposals — scope of work, terms and indicative costs."""
+    return SERVICE_TEMPLATES

@@ -57,6 +57,69 @@ BLOCKED_INPUT_KEYWORDS = {
 # Keywords hinting an expense is personal / non-business in nature.
 NON_BUSINESS_KEYWORDS = ("personal", "private", "family", "home use")
 
+# ── Sales: item/supply categories with special UAE VAT treatment ─────────────
+# Zero-rated (0%) supplies — VAT charged at 0%, still a taxable supply.
+ZERO_RATED_SALES_KEYWORDS = {
+    "export": "Exported goods are zero-rated when export evidence is retained.",
+    "international transport": "International transport of passengers/goods is zero-rated.",
+    "air transport": "International air transport is zero-rated.",
+    "freight": "International freight / transport is typically zero-rated.",
+    "healthcare": "Qualifying healthcare services are zero-rated.",
+    "medical": "Qualifying medical/healthcare services & medicines are zero-rated.",
+    "medicine": "Registered medicines and medical equipment are zero-rated.",
+    "pharma": "Registered medicines are zero-rated.",
+    "education": "Qualifying education services by recognised institutions are zero-rated.",
+    "tuition": "Qualifying tuition by recognised institutions is zero-rated.",
+    "school": "Qualifying school education is zero-rated.",
+    "crude oil": "Crude oil and natural gas supplies are zero-rated.",
+    "natural gas": "Natural gas supplies are zero-rated.",
+    "investment gold": "Investment-grade precious metals (99%+) are zero-rated.",
+    "investment silver": "Investment-grade precious metals (99%+) are zero-rated.",
+    "first supply residential": "The first supply of a new residential building (within 3 years) is zero-rated.",
+    "new residential": "The first supply of a new residential building (within 3 years) is zero-rated.",
+}
+
+# Exempt supplies — no VAT, and NOT a taxable supply (limits input recovery).
+EXEMPT_SALES_KEYWORDS = {
+    "residential rent": "Residential property leases are VAT-exempt.",
+    "residential lease": "Residential property leases are VAT-exempt.",
+    "residential tenancy": "Residential property leases are VAT-exempt.",
+    "apartment rent": "Residential leases are VAT-exempt.",
+    "bare land": "Supply of bare land is VAT-exempt.",
+    "local passenger transport": "Local passenger transport is VAT-exempt.",
+    "taxi": "Local passenger transport is VAT-exempt.",
+    "bus fare": "Local passenger transport is VAT-exempt.",
+    "interest": "Margin-based financial services (interest, loans) are VAT-exempt.",
+    "loan ": "Margin-based financial services (interest, loans) are VAT-exempt.",
+    "life insurance": "Life insurance and reinsurance are VAT-exempt.",
+}
+
+# Free zones designated for VAT (supplies inside/between them can be out of scope).
+DESIGNATED_ZONE_KEYWORDS = (
+    "designated zone", "free zone", "freezone", "jafza", "dafza", "kizad",
+    "saif zone", "hamriyah", "rakez", "dmcc", "jebel ali free",
+)
+
+
+def _designated_zone_party(doctype, name):
+    """Best-effort check if the party's address sits in a VAT designated zone."""
+    if not name:
+        return False
+    try:
+        rows = frappe.db.sql(
+            """SELECT LOWER(CONCAT_WS(' ', IFNULL(a.address_line1,''), IFNULL(a.address_line2,''),
+                      IFNULL(a.city,''), IFNULL(a.address_title,'')))
+               FROM `tabAddress` a
+               JOIN `tabDynamic Link` dl ON dl.parent = a.name AND dl.parenttype = 'Address'
+               WHERE dl.link_doctype = %s AND dl.link_name = %s
+               ORDER BY a.is_primary_address DESC, a.modified DESC LIMIT 3""",
+            (doctype, name),
+        )
+        blob = " ".join((r[0] or "") for r in rows)
+        return any(z in blob for z in DESIGNATED_ZONE_KEYWORDS)
+    except Exception:
+        return False
+
 
 def _company_vat_status(company):
     """Return (registered, trn, currency) for the company."""
@@ -130,6 +193,8 @@ def advise_sales_vat(customer=None, items=None, company=None):
 
         registered, _trn, currency = _company_vat_status(company)
         cust_country, cust_trn = _party_info("Customer", customer)
+        item_text = _items_text(items, "income_account")
+        in_designated_zone = _designated_zone_party("Customer", customer)
         notes = []
 
         # 1) Not VAT-registered → must not charge VAT.
@@ -168,18 +233,63 @@ def advise_sales_vat(customer=None, items=None, company=None):
                 notes=notes, currency=currency, registered=registered,
             )
 
-        # 3) Domestic supply → standard rated by default.
+        # 3) Item description suggests an EXEMPT supply (checked before zero-rated:
+        #    exempt is more restrictive and also limits input recovery).
+        for kw, msg in EXEMPT_SALES_KEYWORDS.items():
+            if kw in item_text:
+                notes.append("Exempt supplies are not taxable — related input VAT may be irrecoverable.")
+                return _result(
+                    _code("EX", charge_vat=False),
+                    severity="warn",
+                    title="Likely exempt — do not charge VAT",
+                    reason=msg + " Confirm the supply meets the exemption conditions before invoicing.",
+                    notes=notes, currency=currency, registered=registered,
+                )
+
+        # 4) Item description suggests a ZERO-RATED supply (0%).
+        for kw, msg in ZERO_RATED_SALES_KEYWORDS.items():
+            if kw in item_text:
+                notes.append("Retain the evidence required to support 0% rating.")
+                return _result(
+                    _code("ZR", charge_vat=True),
+                    severity="warn",
+                    title="Likely zero-rated (0%)",
+                    reason=msg + " Verify the statutory conditions are met before applying 0%.",
+                    notes=notes, currency=currency, registered=registered,
+                )
+
+        # 5) Customer in a VAT designated zone (free zone) → special rules.
+        if in_designated_zone:
+            notes.append("Confirm whether this is a supply of goods (possibly out of scope) "
+                         "or services (usually standard-rated) within the designated zone.")
+            return _result(
+                _code("SR", charge_vat=True),
+                severity="warn",
+                title="Designated zone — verify treatment",
+                reason=("The customer's address is in a VAT designated (free) zone. Certain supplies "
+                        "of goods within/between designated zones are outside the scope of UAE VAT, "
+                        "while services are generally standard-rated. Confirm the supply type."),
+                notes=notes, currency=currency, registered=registered,
+            )
+
+        # 6) Domestic supply → standard rated by default.
         if not cust_country:
             notes.append("Customer country not set — defaulting to a domestic UAE supply.")
-        notes.append("Exempt (e.g. residential rent, certain financial services, local "
-                     "passenger transport) and zero-rated (e.g. exports, certain healthcare/"
-                     "education) categories need to be selected manually if they apply.")
+        if cust_trn:
+            notes.append(f"Customer is VAT-registered (TRN {cust_trn}) — a valid tax invoice "
+                         "showing your TRN and the VAT amount is required.")
+        else:
+            notes.append("No customer TRN on file (treated as B2C / unregistered) — still "
+                         "standard-rated; issue a simplified tax invoice.")
+        notes.append("Exempt (residential rent, margin-based financial services, local passenger "
+                     "transport) and zero-rated (exports, qualifying healthcare/education, "
+                     "investment metals) categories must be selected manually if they apply.")
         return _result(
             _code("SR", charge_vat=True),
             severity="ok",
             title="Charge standard VAT (5%)",
             reason=("Domestic supply to a UAE customer — standard-rated at 5% unless the supply "
-                    "specifically qualifies as zero-rated or exempt."),
+                    "specifically qualifies as zero-rated or exempt based on the item/service."),
             notes=notes, currency=currency, registered=registered,
         )
     except Exception:

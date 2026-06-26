@@ -161,13 +161,11 @@ permission_query_conditions = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Sales Order": {
+		"on_submit": "next_ai.api.make_projects_from_sales_order"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
@@ -186,9 +184,9 @@ scheduler_events = {
 # 	"weekly": [
 # 		"next_ai.tasks.weekly"
 # 	],
-# 	"monthly": [
-# 		"next_ai.tasks.monthly"
-# 	],
+	"monthly": [
+		"next_ai.api.accrue_uae_probation_leave"
+	],
 }
 
 # Testing
